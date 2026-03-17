@@ -338,7 +338,7 @@ if "selected_category" in st.session_state:
 
         # ── 영상 끝날 때까지 대기 (영상 길이에 맞게 초 조정) ──
         import time
-        time.sleep(5)  # ← 영상 길이(초)로 바꿔주세요
+        time.sleep(7)  # ← 영상 길이(초)로 바꿔주세요
 
         # ── 뉴스 수집 ──
         news_data = fetch_news(cat, cnt, days_range)
