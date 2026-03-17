@@ -321,14 +321,20 @@ if "selected_category" in st.session_state:
     </div>
 </div>
 """, unsafe_allow_html=True)
-            with open("Video Project.mp4", "rb") as f:
+            video_path = os.path.join(os.path.dirname(__file__), "Video_Project.mp4")
+            with open(video_path, "rb") as f:
                 video_bytes = f.read()
             st.video(video_bytes)
 
-        # ── 뉴스 수집 (영상 띄워둔 채로 실행) ──
+        # ── 영상 끝날 때까지 대기 (영상 길이에 맞게 초 조정) ──
+        import time
+        time.sleep(5)  # ← 영상 길이(초)로 바꿔주세요
+
+        # ── 뉴스 수집 ──
         news_data = fetch_news(cat, cnt, days_range)
 
         # ── 로딩 영상 제거 ──
+       
         loading_placeholder.empty()
         if not news_data:
             st.warning("검색 결과가 없습니다. 다른 분야를 선택해 주세요.")
