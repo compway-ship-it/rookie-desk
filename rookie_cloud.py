@@ -321,7 +321,7 @@ if "selected_category" in st.session_state:
     </div>
 </div>
 """, unsafe_allow_html=True)
-            with open("Video_Project.mp4", "rb") as f:
+            with open("Video Project.mp4", "rb") as f:
                 video_bytes = f.read()
             st.video(video_bytes)
 
