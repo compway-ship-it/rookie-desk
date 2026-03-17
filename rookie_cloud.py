@@ -307,7 +307,7 @@ if "selected_category" in st.session_state:
     cat, cnt = st.session_state.pop("selected_category"), st.session_state.pop("selected_count")
     with st.chat_message("assistant", avatar=ROOKIE_IMG):
 
-        # ── 로딩 영상 표시 ──
+# ── 로딩 영상 표시 ──
         loading_placeholder = st.empty()
         with loading_placeholder.container():
             st.markdown("""
@@ -322,8 +322,9 @@ if "selected_category" in st.session_state:
 </div>
 """, unsafe_allow_html=True)
             with open("Video_Project.mp4", "rb") as f:
-    video_bytes = f.read()
-st.video(video_bytes)
+                video_bytes = f.read()
+            st.video(video_bytes)
+
         # ── 뉴스 수집 (영상 띄워둔 채로 실행) ──
         news_data = fetch_news(cat, cnt, days_range)
 
