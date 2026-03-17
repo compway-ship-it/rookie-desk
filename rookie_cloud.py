@@ -306,8 +306,28 @@ if not st.session_state.messages:
 if "selected_category" in st.session_state:
     cat, cnt = st.session_state.pop("selected_category"), st.session_state.pop("selected_count")
     with st.chat_message("assistant", avatar=ROOKIE_IMG):
-        st.markdown(f"🔍 **[{cat}]** 분야 최신 정보를 수집 중입니다... 잠시만 기다려 주세요!")
+
+        # ── 로딩 영상 표시 ──
+        loading_placeholder = st.empty()
+        with loading_placeholder.container():
+            st.markdown("""
+<div style='text-align:center; padding: 20px 0;'>
+    <div style='font-family:Noto Serif KR, serif; font-size:1.4rem;
+                color:#f5c842; font-weight:700; margin-bottom:12px;'>
+        🐾 루키가 정리중이에요...
+    </div>
+    <div style='font-size:0.9rem; color:#b8a98a;'>
+        잠시만 기다려 주십시오
+    </div>
+</div>
+""", unsafe_allow_html=True)
+            st.video("Video_Project.mp4")
+
+        # ── 뉴스 수집 (영상 띄워둔 채로 실행) ──
         news_data = fetch_news(cat, cnt, days_range)
+
+        # ── 로딩 영상 제거 ──
+        loading_placeholder.empty()
         if not news_data:
             st.warning("검색 결과가 없습니다. 다른 분야를 선택해 주세요.")
         else:
