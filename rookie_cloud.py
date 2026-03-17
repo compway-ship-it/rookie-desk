@@ -321,6 +321,7 @@ if "selected_category" in st.session_state:
     </div>
 </div>
 """, unsafe_allow_html=True)
+            import os
             video_path = os.path.join(os.path.dirname(__file__), "Video Project.mp4")
             with open(video_path, "rb") as f:
                 video_bytes = f.read()
