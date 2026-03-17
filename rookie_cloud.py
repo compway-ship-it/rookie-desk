@@ -136,13 +136,17 @@ div[data-testid="stChatMessage"] {
 }
 
 /* ── 채팅 입력창 ── */
-[data-testid="stChatInput"] {
+[data-testid="stChatInput"] textarea {
     background: #1c2d4a !important;
+    color: #e8dfc8 !important;
+    border-radius: 50px !important;
+}
+[data-testid="stChatInput"] > div {
     border: 1px solid rgba(245,166,35,0.3) !important;
     border-radius: 50px !important;
-    color: #e8dfc8 !important;
+    background: #1c2d4a !important;
 }
-[data-testid="stChatInput"]:focus-within {
+[data-testid="stChatInput"] > div:focus-within {
     border-color: #f5a623 !important;
     box-shadow: 0 0 0 2px rgba(245,166,35,0.15) !important;
 }
