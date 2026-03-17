@@ -266,7 +266,8 @@ with st.sidebar:
 <a href='mailto:compway@yu.ac.kr' style='color:#89b4fa;'>compway@yu.ac.kr</a> 로 메일 전송해 주시면 적극 반영토록 하겠습니다.<br><br>
 — 개발자 —<br>
 성무진, 강연화, 박현수 드림<br>
-<span style='color:#666;'>최종 업데이트: 2026/03/17 오후 10:40</span><br><br>
+<span style='color:#666;'>1차 업데이트: 2026/03/17 오후 10:40</span><br><br>
+<span style='color:#666;'>2차 업데이트(디자인 및 UI수정): 2026/03/17 오후 11:25</span><br><br>
 ※ 오른쪽 위 <b>Dark모드</b> 사용을 권장합니다.
 </div>
 </div>
