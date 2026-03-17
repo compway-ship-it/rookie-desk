@@ -325,7 +325,15 @@ if "selected_category" in st.session_state:
             video_path = os.path.join(os.path.dirname(__file__), "Video Project.mp4")
             with open(video_path, "rb") as f:
                 video_bytes = f.read()
-            st.video(video_bytes)
+            import base64
+            video_path = os.path.join(os.path.dirname(__file__), "Video_Project.mp4")
+            with open(video_path, "rb") as f:
+                video_b64 = base64.b64encode(f.read()).decode()
+            st.markdown(f"""
+<video width="100%" autoplay muted playsinline>
+    <source src="data:video/mp4;base64,{video_b64}" type="video/mp4">
+</video>
+""", unsafe_allow_html=True)
 
         # ── 영상 끝날 때까지 대기 (영상 길이에 맞게 초 조정) ──
         import time
