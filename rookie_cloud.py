@@ -321,8 +321,8 @@ if "selected_category" in st.session_state:
     </div>
 </div>
 """, unsafe_allow_html=True)
-            st.video("Video_Project.mp4")
-
+            with open("Video_Project.mp4", "rb") as f:
+    st.video(f.read())
         # ── 뉴스 수집 (영상 띄워둔 채로 실행) ──
         news_data = fetch_news(cat, cnt, days_range)
 
