@@ -326,14 +326,15 @@ if "selected_category" in st.session_state:
             with open(video_path, "rb") as f:
                 video_bytes = f.read()
             import base64
+            import streamlit.components.v1 as components
             video_path = os.path.join(os.path.dirname(__file__), "Video Project.mp4")
             with open(video_path, "rb") as f:
                 video_b64 = base64.b64encode(f.read()).decode()
-            st.markdown(f"""
-<video width="100%" autoplay muted playsinline>
+            components.html(f"""
+<video width="100%" autoplay muted playsinline loop>
     <source src="data:video/mp4;base64,{video_b64}" type="video/mp4">
 </video>
-""", unsafe_allow_html=True)
+""", height=400)
 
         # ── 영상 끝날 때까지 대기 (영상 길이에 맞게 초 조정) ──
         import time
