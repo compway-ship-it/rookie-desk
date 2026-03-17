@@ -326,7 +326,7 @@ if "selected_category" in st.session_state:
             with open(video_path, "rb") as f:
                 video_bytes = f.read()
             import base64
-            video_path = os.path.join(os.path.dirname(__file__), "Video_Project.mp4")
+            video_path = os.path.join(os.path.dirname(__file__), "Video Project.mp4")
             with open(video_path, "rb") as f:
                 video_b64 = base64.b64encode(f.read()).decode()
             st.markdown(f"""
