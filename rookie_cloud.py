@@ -526,10 +526,10 @@ def auth_generate_code() -> str:
 def auth_check_capacity() -> bool:
     """30명 미만인지 확인"""
     try:
-        res = supabase.table("users").select("code", count="exact").execute()
-        return res.count < MAX_USERS
+        res = supabase.table("users").select("code").execute()
+        return len(res.data) < MAX_USERS
     except Exception:
-        return False
+        return True  # 오류 시 가입 허용
 
 def auth_register(name: str):
     """신규 회원 등록 → {code, name} 반환"""
