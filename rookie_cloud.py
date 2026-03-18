@@ -864,7 +864,7 @@ with st.sidebar:
 
 # ── 메인 ──────────────────────────────────────────────────────
 st.markdown("# 🐾 Rookie")
-tab1, tab2 = st.tabs(["서비스 소개", "뉴스 비서실"])
+tab1, tab2 = st.tabs(["우리는 이런걸 만듭니다", "루키 비서실"])
 
 # ══════════════════════════════════════════════════════════════
 # TAB 1 — 서비스 소개
@@ -875,13 +875,13 @@ with tab1:
 <div class='hero-wrap'>
   <div class='hero-eyebrow'>AI Secretary Series</div>
   <div class='hero-headline'>
-    정보의 홍수 속에서<br>
+    작은 화면 안에서<br>
     <span>당신만의 전문가를</span>
   </div>
   <div class='hero-body'>
     투자, 업무, 시사. 세 개의 영역에서 세 명의 AI 비서가<br>
     당신 옆에 24시간 대기합니다.<br>
-    더 이상 혼자 모든 걸 알 필요가 없습니다.
+    더 이상 혼자 모든 걸 할 필요가 없습니다.
   </div>
 </div>
 """, unsafe_allow_html=True)
@@ -990,9 +990,9 @@ with tab2:
 <div class='notice-title'>개발 노트</div>
 <div style='font-size:0.88rem; line-height:2.1; color:#9a9180; padding:4px 0;'>
 ⓐ 현재 AI Rookie는 개발 중인 모델의 일부이며, 완전히 구현되지 않아 오류가 발생할 수 있습니다.<br><br>
-ⓑ 미구현 기능: 지식저장소 영구보존, 1:1 채팅의 자연스러운 흐름, 단어 저장 기능<br><br>
+ⓑ 미구현 기능: 지식저장소 영구보존, 1:1 채팅의 자연스러운 흐름, 단어 저장 기능(*3월 18일 기준 일부 구현)<br><br>
 ⓒ 현재 환경은 <b style='color:#c9a84c;'>신문 및 시사 뉴스 스크랩</b> 전용으로 제작되었습니다.<br><br>
-ⓓ 3월 초순부터 개발이 시작되었으며, 실시간으로 업데이트 중입니다.<br><br>
+ⓓ 현재 Rookie 모델은 3월 초순부터 개발이 시작되었으며, 실시간으로 업데이트 중입니다.<br><br>
 ⓔ 다수 사용자 동시 접속 시 생성 제한 및 오류가 발생할 수 있습니다.<br><br>
 ⓕ 클라우드 서버 특성상 배포 안정성에 일부 한계가 있을 수 있습니다.<br><br>
 ⓖ PC 환경 및 Dark 모드 사용을 권장합니다.<br><br>
