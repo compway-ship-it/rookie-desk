@@ -1,8 +1,9 @@
-"""루키 비서실 — 클라우드 버전 (Groq API)"""
+"""루키 비서실 — 클라우드 버전 (Groq API + Supabase DB)"""
 import streamlit as st
 import streamlit.components.v1 as components
 from duckduckgo_search import DDGS
 from groq import Groq
+from supabase import create_client, Client
 import os, base64, time, json, re
 
 st.set_page_config(page_title="루키 비서실", layout="wide", page_icon="🐾")
@@ -494,13 +495,227 @@ except Exception:
     st.error("GROQ_API_KEY가 설정되지 않았습니다.")
     st.stop()
 
+# ── Supabase 클라이언트 ───────────────────────────────────────
+@st.cache_resource
+def get_supabase() -> Client:
+    return create_client(
+        st.secrets["SUPABASE_URL"],
+        st.secrets["SUPABASE_KEY"]
+    )
+
+supabase = get_supabase()
+
+# ── 인증 함수 ─────────────────────────────────────────────────
+REFERRAL_CODE = "admin9416"  # 추천인 코드
+MAX_USERS = 30
+
+def auth_generate_code() -> str:
+    """고유 코드 자동 생성 (ROOKIE-XXXX 형태)"""
+    import random, string
+    while True:
+        suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+        code = f"ROOKIE-{suffix}"
+        # 중복 체크
+        try:
+            res = supabase.table("users").select("code").eq("code", code).execute()
+            if not res.data:
+                return code
+        except Exception:
+            return code
+
+def auth_check_capacity() -> bool:
+    """30명 미만인지 확인"""
+    try:
+        res = supabase.table("users").select("code", count="exact").execute()
+        return res.count < MAX_USERS
+    except Exception:
+        return False
+
+def auth_register(name: str) -> dict | None:
+    """신규 회원 등록 → {code, name} 반환"""
+    try:
+        code = auth_generate_code()
+        supabase.table("users").insert({"code": code, "name": name.strip()}).execute()
+        return {"code": code, "name": name.strip()}
+    except Exception:
+        return None
+
+def auth_login(code: str) -> dict | None:
+    """기등록 유저 로그인"""
+    try:
+        res = supabase.table("users").select("code, name").eq("code", code.strip().upper()).execute()
+        return res.data[0] if res.data else None
+    except Exception:
+        return None
+
+# ── DB 헬퍼 함수 (user_code 기반 개인별 분리) ────────────────
+def db_load_vocab(user_code: str) -> dict:
+    try:
+        res = supabase.table("vocab_store").select("word, definition").eq("user_code", user_code).order("created_at").execute()
+        return {row["word"]: row["definition"] for row in res.data}
+    except Exception:
+        return {}
+
+def db_save_vocab(user_code: str, word: str, definition: str):
+    try:
+        exists = supabase.table("vocab_store").select("id").eq("user_code", user_code).eq("word", word).execute()
+        if exists.data:
+            supabase.table("vocab_store").update({"definition": definition}).eq("user_code", user_code).eq("word", word).execute()
+        else:
+            supabase.table("vocab_store").insert({"user_code": user_code, "word": word, "definition": definition}).execute()
+    except Exception as e:
+        st.toast(f"저장 오류: {e}", icon="🔴")
+
+def db_delete_vocab(user_code: str, word: str):
+    try:
+        supabase.table("vocab_store").delete().eq("user_code", user_code).eq("word", word).execute()
+    except Exception as e:
+        st.toast(f"삭제 오류: {e}", icon="🔴")
+
+def db_load_bookmarks(user_code: str) -> list:
+    try:
+        res = supabase.table("bookmarks").select("*").eq("user_code", user_code).order("created_at", desc=True).execute()
+        return res.data
+    except Exception:
+        return []
+
+def db_save_bookmark(user_code: str, item: dict) -> bool:
+    try:
+        exists = supabase.table("bookmarks").select("id").eq("user_code", user_code).eq("link", item["link"]).execute()
+        if exists.data:
+            return False
+        supabase.table("bookmarks").insert({
+            "user_code": user_code,
+            "title":   item["title"],
+            "link":    item["link"],
+            "source":  item.get("source", ""),
+            "date":    item.get("date", ""),
+            "summary": item.get("summary", "")[:300],
+        }).execute()
+        return True
+    except Exception as e:
+        st.toast(f"북마크 오류: {e}", icon="🔴")
+        return False
+
+def db_delete_bookmark(bookmark_id: str):
+    try:
+        supabase.table("bookmarks").delete().eq("id", bookmark_id).execute()
+    except Exception as e:
+        st.toast(f"삭제 오류: {e}", icon="🔴")
+
 if "messages"     not in st.session_state: st.session_state.messages     = []
 if "chat_history" not in st.session_state: st.session_state.chat_history = []
 if "news_context" not in st.session_state: st.session_state.news_context = ""
-if "vocab_dict"   not in st.session_state: st.session_state.vocab_dict   = {}
-if "bookmarks"    not in st.session_state: st.session_state.bookmarks    = []
 if "pending_news" not in st.session_state: st.session_state.pending_news = []
 if "filtered_news_cache" not in st.session_state: st.session_state.filtered_news_cache = []
+if "current_user" not in st.session_state: st.session_state.current_user = None  # {code, name}
+
+# ── 로그인 / 회원가입 화면 ────────────────────────────────────
+if st.session_state.current_user is None:
+    st.markdown("""
+<div style='max-width:420px; margin:80px auto 0; text-align:center;'>
+  <div style='font-family:Playfair Display,serif; font-size:2.2rem; font-weight:900;
+              background:linear-gradient(135deg,#e8c76a,#c9a84c);
+              -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+              margin-bottom:8px;'>🐾 Rookie</div>
+  <div style='font-size:0.9rem; color:#5c5648; margin-bottom:40px;'>
+      AI 비서 시리즈 — 0차 비공개 베타
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+    col_l, col_c, col_r = st.columns([1, 2, 1])
+    with col_c:
+        st.markdown("""
+<div style='background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07);
+            border-radius:16px; padding:32px 28px;'>
+""", unsafe_allow_html=True)
+
+        tab_login, tab_signup = st.tabs(["로그인", "첫 방문 (회원가입)"])
+
+        # ── 로그인 탭 ──
+        with tab_login:
+            st.caption("발급받은 코드로 로그인하세요.")
+            login_code = st.text_input(
+                "접근 코드",
+                placeholder="ROOKIE-XXXXXX",
+                key="login_code_input"
+            ).strip().upper()
+            if st.button("로그인", use_container_width=True, type="primary", key="btn_login"):
+                if not login_code:
+                    st.warning("접근 코드를 입력해 주세요.")
+                else:
+                    user = auth_login(login_code)
+                    if user:
+                        st.session_state.current_user = user
+                        st.session_state.vocab_dict   = db_load_vocab(user["code"])
+                        st.session_state.bookmarks    = db_load_bookmarks(user["code"])
+                        st.rerun()
+                    else:
+                        st.error("등록된 코드가 아닙니다. 첫 방문이라면 회원가입 탭을 이용해 주세요.")
+
+        # ── 회원가입 탭 ──
+        with tab_signup:
+            st.caption("추천인 코드 확인 후 이름을 입력하면 고유 코드가 발급됩니다.")
+
+            referral = st.text_input(
+                "누구에게 추천을 받으셨나요?",
+                placeholder="추천인 코드 입력",
+                key="referral_input"
+            ).strip()
+
+            referral_ok = referral == REFERRAL_CODE
+            if referral and not referral_ok:
+                st.error("올바르지 않은 추천인 코드입니다.")
+            if referral_ok:
+                st.success("추천인 확인 완료! 이름을 입력해 주세요.")
+
+            name_input = st.text_input(
+                "이름 (꼭 실명을 입력하세요!)",
+                placeholder="예: 홍길동",
+                key="signup_name_input",
+                disabled=not referral_ok,
+                help="베타 테스트 관리를 위해 실명이 필요합니다."
+            )
+
+            if st.button("가입하고 코드 발급받기", use_container_width=True,
+                         type="primary", key="btn_signup", disabled=not referral_ok):
+                if not name_input.strip():
+                    st.warning("이름을 입력해 주세요.")
+                elif not auth_check_capacity():
+                    st.error(f"베타 테스터 정원({MAX_USERS}명)이 초과되었습니다.")
+                else:
+                    user = auth_register(name_input.strip())
+                    if user:
+                        st.session_state.current_user = user
+                        st.session_state.vocab_dict   = {}
+                        st.session_state.bookmarks    = []
+                        st.session_state.new_code     = user["code"]  # ★ 코드 보존
+                        st.rerun()
+                    else:
+                        st.error("등록 중 오류가 발생했습니다. 다시 시도해 주세요.")
+
+        st.markdown("</div>", unsafe_allow_html=True)
+    st.stop()
+
+# ── 로그인 후 세션 데이터 초기화 ──────────────────────────────
+user_code = st.session_state.current_user["code"]
+user_name = st.session_state.current_user["name"]
+if "vocab_dict"  not in st.session_state: st.session_state.vocab_dict  = db_load_vocab(user_code)
+if "bookmarks"   not in st.session_state: st.session_state.bookmarks   = db_load_bookmarks(user_code)
+
+# ── 신규 가입 코드 안내 배너 (한 번만 표시) ────────────────────
+if st.session_state.get("new_code"):
+    st.success(f"환영합니다, {user_name}님! 🐾")
+    st.warning(f"""⚠️ **이 코드는 꼭 기억해 두세요!**
+
+📋 **내 접근 코드: `{st.session_state.new_code}`**
+
+이 코드는 다음 로그인 시 반드시 필요합니다.
+코드를 분실하면 재발급이 어려우니 메모장, 카카오톡 나에게 보내기 등에 저장해 두세요.""")
+    if st.button("코드를 저장했어요 ✓"):
+        del st.session_state["new_code"]
+        st.rerun()
 
 CATEGORY_KEYWORDS = {
     "경제/증시":   ["국내 증시 전망","금리 환율 동향","코스피 코스닥 시황","주요 기업 실적","한국은행 기준금리","원달러 환율","코스피 급등 급락","기업 IPO 상장","주식 투자 트렌드","채권 금융시장","무역수지 경상수지","소비자물가 인플레이션","기업 인수합병 M&A","벤처 투자 VC","외국인 기관 매매동향"],
@@ -572,6 +787,16 @@ with st.sidebar:
     try: st.image(ROOKIE_IMG, use_container_width=True)
     except: pass
     st.markdown("<h1>🐾 루키 비서실</h1>", unsafe_allow_html=True)
+
+    st.markdown(f"""
+<div style='background:rgba(201,168,76,0.08); border:1px solid rgba(201,168,76,0.2);
+            border-radius:10px; padding:10px 14px; margin-bottom:12px;
+            font-size:0.85rem; color:#c9a84c;'>
+  🐾 &nbsp;<b>{user_name}</b>
+  <span style='color:#5c5648; font-size:0.75rem; margin-left:6px;'>{user_code}</span>
+</div>
+""", unsafe_allow_html=True)
+
     st.markdown("---")
     st.markdown("**📅 검색 기간**")
     days_range = st.slider("", 1, 14, 7, label_visibility="collapsed")
@@ -582,31 +807,42 @@ with st.sidebar:
         for word, defn in list(st.session_state.vocab_dict.items()):
             with st.expander(f"💎 {word}"):
                 new_defn = st.text_area("수정", value=defn, key=f"e_{word}")
-                if new_defn != defn: st.session_state.vocab_dict[word] = new_defn
+                if new_defn != defn:
+                    st.session_state.vocab_dict[word] = new_defn
+                    db_save_vocab(user_code, word, new_defn)
                 if st.button("삭제", key=f"d_{word}"):
-                    del st.session_state.vocab_dict[word]; st.rerun()
+                    db_delete_vocab(user_code, word)
+                    del st.session_state.vocab_dict[word]
+                    st.rerun()
     else:
         st.caption("저장된 단어가 없습니다.")
     st.markdown("---")
 
-    # ── ② 북마크 ──
     st.markdown("**🔖 북마크**")
     if st.session_state.bookmarks:
-        for idx, bm in enumerate(list(st.session_state.bookmarks)):
-            with st.expander(f"📌 {bm['title'][:20]}..."):
+        for bm in list(st.session_state.bookmarks):
+            with st.expander(f"📌 {bm['title'][:22]}..."):
                 st.caption(f"{bm['source']} · {bm['date']}")
                 st.markdown(f"[원문 보기]({bm['link']})")
-                if st.button("삭제", key=f"bm_del_{idx}"):
-                    st.session_state.bookmarks.pop(idx); st.rerun()
+                if st.button("삭제", key=f"bm_del_{bm['id']}"):
+                    db_delete_bookmark(bm["id"])
+                    st.session_state.bookmarks = db_load_bookmarks(user_code)
+                    st.rerun()
     else:
         st.caption("저장된 북마크가 없습니다.")
     st.markdown("---")
-    if st.button("🔄 대화 초기화"):
+
+    col_reset, col_logout = st.columns(2)
+    if col_reset.button("🔄 초기화"):
         st.session_state.update(
-            messages=[], vocab_dict={}, news_context="",
-            chat_history=[], bookmarks=[], pending_news=[],
+            messages=[], news_context="",
+            chat_history=[], pending_news=[],
             filtered_news_cache=[]
         )
+        st.rerun()
+    if col_logout.button("🚪 로그아웃"):
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
         st.rerun()
 
 # ── 메인 ──────────────────────────────────────────────────────
@@ -901,16 +1137,17 @@ JSON:"""
                 d = act2.text_input("정의", key=f"d_{i}")
                 if act3.button("저장", key=f"b_{i}") and w:
                     st.session_state.vocab_dict[w] = d
+                    db_save_vocab(user_code, w, d)
                     st.toast(f"'{w}' 저장 완료!")
                 if act4.button("🔖", key=f"bm_{i}", help="북마크에 저장"):
-                    already = any(bm["link"] == item["link"] for bm in st.session_state.bookmarks)
-                    if not already:
-                        st.session_state.bookmarks.append({
-                            "title": item["title"], "link": item["link"],
-                            "source": item["source"], "date": item["date"],
-                            "summary": analysis[:200]
-                        })
-                        st.toast(f"🔖 북마크 저장!")
+                    saved = db_save_bookmark(user_code, {
+                        "title": item["title"], "link": item["link"],
+                        "source": item["source"], "date": item["date"],
+                        "summary": analysis[:300]
+                    })
+                    if saved:
+                        st.session_state.bookmarks = db_load_bookmarks(user_code)
+                        st.toast("🔖 북마크 저장!")
                     else:
                         st.toast("이미 북마크된 기사입니다.")
 
@@ -1220,15 +1457,17 @@ def run_news_from_chat(params: dict):
         w = c1.text_input("단어", key=f"cw_{key_suffix}")
         d = c2.text_input("정의", key=f"cd_{key_suffix}")
         if c3.button("저장", key=f"cb_{key_suffix}") and w:
-            st.session_state.vocab_dict[w] = d; st.toast(f"'{w}' 저장 완료!")
+            st.session_state.vocab_dict[w] = d
+            db_save_vocab(user_code, w, d)
+            st.toast(f"'{w}' 저장 완료!")
         if c4.button("🔖", key=f"cbm_{key_suffix}", help="북마크 저장"):
-            already = any(bm["link"] == item["link"] for bm in st.session_state.bookmarks)
-            if not already:
-                st.session_state.bookmarks.append({
-                    "title": item["title"], "link": item["link"],
-                    "source": item["source"], "date": item["date"],
-                    "summary": analysis[:200]
-                })
+            saved = db_save_bookmark(user_code, {
+                "title": item["title"], "link": item["link"],
+                "source": item["source"], "date": item["date"],
+                "summary": analysis[:300]
+            })
+            if saved:
+                st.session_state.bookmarks = db_load_bookmarks(user_code)
                 st.toast("🔖 북마크 저장!")
             else:
                 st.toast("이미 북마크된 기사입니다.")
