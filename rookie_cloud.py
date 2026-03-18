@@ -43,6 +43,32 @@ h1 {
     background: linear-gradient(180deg, #0f1928 0%, #162035 100%) !important;
     border-right: 1px solid rgba(245,166,35,0.2) !important;
 }
+/* ── 슬라이더 트랙 ── */
+[data-testid="stSlider"] > div > div > div > div {
+    background: linear-gradient(90deg, #f5a623, #f5c842) !important;
+}
+
+/* ── 슬라이더 핸들 (동그라미) ── */
+[data-testid="stSlider"] > div > div > div > div > div {
+    background: #f5c842 !important;
+    border: 2px solid #121c30 !important;
+    box-shadow: 0 0 8px rgba(245,166,35,0.6) !important;
+}
+
+/* ── select_slider 선택된 항목 ── */
+[data-testid="stSlider"] [data-testid="stMarkdownContainer"] p {
+    color: #f5c842 !important;
+    font-weight: 600 !important;
+    font-family: 'Noto Serif KR', serif !important;
+}
+
+/* ── select_slider 전체 배경 ── */
+[data-testid="stSlider"] {
+    background: rgba(245,166,35,0.05) !important;
+    border-radius: 12px !important;
+    padding: 12px 16px !important;
+    border: 1px solid rgba(245,166,35,0.2) !important;
+}
 [data-testid="stSidebar"] * { color: #e8dfc8 !important; }
 [data-testid="stSidebar"] h1 {
     font-family: 'Noto Serif KR', serif !important;
