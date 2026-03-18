@@ -361,7 +361,6 @@ if not st.session_state.messages:
 """, unsafe_allow_html=True)
 
         st.markdown(f"안녕하십니까! **최근 {days_range}일**간의 뉴스를 분석해 드리겠습니다. 아래에서 분야를 선택해 주세요 🐾")
-        count = st.select_slider("조사할 기사 개수", options=[1, 2, 3, 4, 5], value=3)
 
         # ── 지역 선택 ──
         st.markdown("**🌍 뉴스 수급 지역**")
@@ -377,11 +376,18 @@ if not st.session_state.messages:
             "🗺️ 전체 (한국 + 해외)": "전체",
         }
         selected_region = region_map_ui[region_choice]
-        st.caption({
-            "한국": "한국 언론사 뉴스만 검색합니다.",
-            "해외": "영어권 해외 언론사 뉴스를 검색합니다. (BBC, Reuters, Bloomberg 등)",
-            "전체": "한국 + 해외 뉴스를 모두 검색합니다. (검색 시간이 더 걸릴 수 있어요)",
-        }[selected_region])
+
+        if selected_region in ["해외", "전체"]:
+            st.caption({
+                "해외": "영어권 해외 언론사 뉴스를 검색합니다. (BBC, Reuters, Bloomberg 등)",
+                "전체": "한국 + 해외 뉴스를 모두 검색합니다. (검색 시간이 더 걸릴 수 있어요)",
+            }[selected_region])
+            st.warning("해외 뉴스는 번역 시간으로 인해 최대 2개까지만 선택 가능합니다.")
+            count = st.select_slider("조사할 기사 개수", options=[1, 2], value=2)
+        else:
+            st.caption("한국 언론사 뉴스만 검색합니다.")
+            count = st.select_slider("조사할 기사 개수", options=[1, 2, 3, 4, 5], value=3)
+
         st.markdown("---")
 
         cats = list(CATEGORY_KEYWORDS.keys())
@@ -398,7 +404,6 @@ if not st.session_state.messages:
                         "content": f"[{cat}] 최근 {days_range}일 {region_choice} 뉴스 {count}개 스크랩해 줘."
                     })
                     st.rerun()
-
 # ── 스크랩 실행 ───────────────────────────────────────────────
 if "selected_category" in st.session_state:
     cat         = st.session_state.pop("selected_category")
