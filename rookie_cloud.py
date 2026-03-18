@@ -331,6 +331,7 @@ with st.sidebar:
 성무진, 강연화, 박현수 드림<br>
 <span style='color:#666;'>1차 업데이트: 2026/03/17 오후 10:40</span><br><br>
 <span style='color:#666;'>2차 업데이트(디자인 및 UI수정): 2026/03/17 오후 11:25</span><br><br>
+<span style='color:#666;'>3차 업데이트(모델 답변 개선 및 외국어 출력 버그 수정): 2026/03/18 오전 07:25</span><br><br>
 오른쪽 위 <b>Dark모드</b> 사용을 권장합니다.
 </div>
 </div>
