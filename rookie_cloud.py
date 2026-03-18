@@ -385,13 +385,17 @@ if not st.session_state.messages:
 ⓔ 현재 1:1 대화 및 신문 및 스크랩 생성에 다수의 사용자가 사용 시 생성 제한 및 오류가 발생할 수 있습니다.<br><br>
 ⓕ 현재 클라우드 서버를 이용중이므로 배포에 불완전성이 우려됩니다.<br><br>
 ⓖ PC 환경 사용을 권장합니다.<br><br>
+ⓗ 오른쪽 위 <b>Dark모드</b> 사용을 권장합니다.<br><br>
 <span style='color:#f5a623; font-weight:600;'>이 외 오류 및 개선사항이 있다면</span><br>
 <a href='mailto:compway@yu.ac.kr' style='color:#f5c842;'>compway@yu.ac.kr</a> 로 메일 전송해 주시면 적극 반영토록 하겠습니다.<br><br>
 <span style='color:#f5c842; font-weight:700;'>— 개발자 —</span><br>
 성무진, 강연화, 박현수 드림<br><br>
 <span style='color:#666; font-size:0.82rem;'>1차 업데이트: 2026/03/17 오후 10:40<br>
-2차 업데이트(디자인 및 UI수정): 2026/03/17 오후 11:25</span><br><br>
-오른쪽 위 <b>Dark모드</b> 사용을 권장합니다.
+2차 수정(디자인 및 UI수정): 2026/03/17 오후 11:25</span><br><br>
+3차 수정(모델 답변 및 채팅 개선): 2026/03/17 오전 07:23</span><br><br>
+3차 수정(모델 외국어 출력 버그 및 해외,한국 선택 기능 추가): 2026/03/17 오전 11:32</span><br><br>
+
+
 </div>
 </div>
 """, unsafe_allow_html=True)
