@@ -4,8 +4,8 @@ import streamlit.components.v1 as components
 from duckduckgo_search import DDGS
 from groq import Groq
 from supabase import create_client
+from streamlit_js_eval import streamlit_js_eval
 import os, base64, time, json, re
-from streamlit_cookies_controller import CookieController
 
 st.set_page_config(page_title="루키 비서실", layout="wide", page_icon="🐾")
 
@@ -613,17 +613,22 @@ if "filtered_news_cache"  not in st.session_state: st.session_state.filtered_new
 if "analyzed_results"     not in st.session_state: st.session_state.analyzed_results     = []
 if "current_user" not in st.session_state: st.session_state.current_user = None
 
-# ── 쿠키로 로그인 유지 ────────────────────────────────────────
-cookie = CookieController()
+# ── localStorage로 로그인 유지 ────────────────────────────────
+# 브라우저 localStorage에서 저장된 코드 읽기
+from streamlit_js_eval import streamlit_js_eval
 
-if st.session_state.current_user is None:
-    saved_code = cookie.get("rookie_user_code")
-    if saved_code:
-        user = auth_login(saved_code)
-        if user:
-            st.session_state.current_user = user
-            st.session_state.vocab_dict  = db_load_vocab(user["code"])
-            st.session_state.bookmarks   = db_load_bookmarks(user["code"])
+saved_code = streamlit_js_eval(
+    js_expressions="localStorage.getItem('rookie_user_code')",
+    key="get_saved_code"
+)
+
+if st.session_state.current_user is None and saved_code:
+    user = auth_login(saved_code)
+    if user:
+        st.session_state.current_user = user
+        st.session_state.vocab_dict   = db_load_vocab(user["code"])
+        st.session_state.bookmarks    = db_load_bookmarks(user["code"])
+        st.rerun()
 
 # ── 로그인 / 회원가입 화면 ────────────────────────────────────
 if st.session_state.current_user is None:
@@ -665,7 +670,7 @@ if st.session_state.current_user is None:
                         st.session_state.current_user = user
                         st.session_state.vocab_dict   = db_load_vocab(user["code"])
                         st.session_state.bookmarks    = db_load_bookmarks(user["code"])
-                        cookie.set("rookie_user_code", user["code"], max_age=30*24*3600)  # 30일 유지
+                        streamlit_js_eval(js_expressions=f"localStorage.setItem('rookie_user_code', '{user['code']}')", key="save_login")
                         st.rerun()
                     else:
                         st.error("등록된 코드가 아닙니다. 첫 방문이라면 회원가입 탭을 이용해 주세요.")
@@ -707,7 +712,7 @@ if st.session_state.current_user is None:
                         st.session_state.vocab_dict   = {}
                         st.session_state.bookmarks    = []
                         st.session_state.new_code     = user["code"]
-                        cookie.set("rookie_user_code", user["code"], max_age=30*24*3600)  # 30일 유지
+                        streamlit_js_eval(js_expressions=f"localStorage.setItem('rookie_user_code', '{user['code']}')", key="save_signup")
                         st.rerun()
                     else:
                         st.error("등록 중 오류가 발생했습니다. 다시 시도해 주세요.")
@@ -858,7 +863,7 @@ with st.sidebar:
         )
         st.rerun()
     if col_logout.button("🚪 로그아웃"):
-        cookie.remove("rookie_user_code")
+        streamlit_js_eval(js_expressions="localStorage.removeItem('rookie_user_code')", key="clear_login")
         for key in list(st.session_state.keys()):
             del st.session_state[key]
         st.rerun()
