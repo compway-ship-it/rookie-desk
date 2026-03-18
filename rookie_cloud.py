@@ -537,7 +537,8 @@ def auth_register(name: str):
         code = auth_generate_code()
         supabase.table("users").insert({"code": code, "name": name.strip()}).execute()
         return {"code": code, "name": name.strip()}
-    except Exception:
+    except Exception as e:
+        st.error(f"등록 오류 상세: {e}")
         return None
 
 def auth_login(code: str):
