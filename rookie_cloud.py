@@ -796,7 +796,7 @@ def stream_groq(prompt: str, history: list = None) -> str:
                 in_think = False; buffer = buffer.split("</think>")[-1]
             if not in_think and "</think>" in buffer or not in_think and "<think>" not in buffer:
                 yield buffer; buffer = ""
-    return st.write_stream(_gen())
+    return st.write_stream(_gen()) or ""
 
 # ── 사이드바 ──────────────────────────────────────────────────
 with st.sidebar:
@@ -864,7 +864,7 @@ with st.sidebar:
 
 # ── 메인 ──────────────────────────────────────────────────────
 st.markdown("# 🐾 Rookie")
-tab1, tab2 = st.tabs(["우리는 이런걸 만듭니다", "루키 비서실"])
+tab1, tab2, tab3 = st.tabs(["우리는 이런걸 만듭니다", "📖 루키 사용법", "🐶 루키 비서실"])
 
 # ══════════════════════════════════════════════════════════════
 # TAB 1 — 서비스 소개
@@ -975,9 +975,118 @@ with tab1:
 """, unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════
-# TAB 2 — 뉴스 비서실
+# TAB 2 — 루키 사용법
 # ══════════════════════════════════════════════════════════════
 with tab2:
+    st.markdown("""
+<div style='max-width:760px; margin:0 auto;'>
+
+<div style='text-align:center; padding:56px 0 40px;'>
+  <div style='font-size:3.2rem; margin-bottom:16px;'>🐶</div>
+  <div style='font-family:Playfair Display,serif; font-size:clamp(1.8rem,4vw,2.6rem); font-weight:900;
+              background:linear-gradient(135deg,#e8c76a,#c9a84c);
+              -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+              margin-bottom:12px; letter-spacing:-0.5px;'>안녕하세요, 저는 루키예요!</div>
+  <div style='font-size:1rem; color:#9a9180; line-height:1.9; font-weight:300;'>
+    시사 뉴스 전담 AI 비서입니다.<br>
+    제가 무엇을 할 수 있는지, 어떻게 쓰시면 되는지 직접 안내해 드릴게요.
+  </div>
+</div>
+
+<div style='height:1px; background:linear-gradient(90deg,transparent,rgba(201,168,76,0.3),transparent); margin:8px 0 40px;'></div>
+
+<!-- 기능 소개 카드 1 -->
+<div style='background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); border-radius:16px; padding:28px 32px; margin-bottom:20px;'>
+  <div style='font-size:1.5rem; margin-bottom:10px;'>📰</div>
+  <div style='font-family:Playfair Display,serif; font-size:1.1rem; font-weight:700; color:#e8c76a; margin-bottom:10px;'>① 카테고리 버튼으로 뉴스 스크랩</div>
+  <div style='font-size:0.9rem; color:#9a9180; line-height:2.0;'>
+    <b style='color:#f0ece2;'>루키 비서실</b> 탭에 들어오면 처음에 8개 분야 버튼이 보여요.<br>
+    <span style='color:#c9a84c;'>경제/증시, AI/미래기술, 정치/외교, 산업/부동산, 글로벌 뉴스, 과학/환경, 사회/이슈, 문화/라이프</span><br><br>
+    원하는 분야를 누르면 제가 최신 기사를 자동으로 모아와요.<br>
+    그 다음엔 수집된 기사 목록이 나타나고, <b style='color:#f0ece2;'>심층 분석할 기사를 체크</b>한 뒤<br>
+    <b style='color:#c9a84c;'>「🔍 선택한 기사 심층 분석 시작」</b> 버튼을 눌러주세요.<br><br>
+    저는 각 기사마다 <b style='color:#f0ece2;'>기본 내용 → 핵심 요약 → 심층 분석 → 단어 사전</b> 순서로 분석해 드립니다.
+  </div>
+</div>
+
+<!-- 기능 소개 카드 2 -->
+<div style='background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); border-radius:16px; padding:28px 32px; margin-bottom:20px;'>
+  <div style='font-size:1.5rem; margin-bottom:10px;'>💬</div>
+  <div style='font-family:Playfair Display,serif; font-size:1.1rem; font-weight:700; color:#e8c76a; margin-bottom:10px;'>② 채팅창에서 자유롭게 요청하세요</div>
+  <div style='font-size:0.9rem; color:#9a9180; line-height:2.0;'>
+    버튼 없이도 아래 채팅창에 자유롭게 입력하면 돼요.<br>
+    뉴스 관련 요청이면 자동으로 뉴스 검색 모드로 전환되고,<br>
+    궁금한 점을 물어보면 일반 대화로 답해드려요.<br><br>
+    <b style='color:#c9a84c;'>이런 표현들을 쓰면 잘 알아들어요 👇</b><br>
+    <span style='background:rgba(201,168,76,0.08); border:1px solid rgba(201,168,76,0.2); border-radius:8px; padding:14px 18px; display:block; margin-top:10px; line-height:2.2; font-size:0.86rem; color:#c9a84c;'>
+      "오늘 반도체 뉴스 보여줘"<br>
+      "미국 금리 최신 소식 2개만"<br>
+      "이번 주 부동산 동향 알려줘"<br>
+      "AI 관련 해외 기사 찾아줘"<br>
+      "방금 본 기사에서 PER이 뭐야?" <span style='color:#5c5648;'>(← 일반 질문)</span>
+    </span>
+  </div>
+</div>
+
+<!-- 기능 소개 카드 3 -->
+<div style='background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); border-radius:16px; padding:28px 32px; margin-bottom:20px;'>
+  <div style='font-size:1.5rem; margin-bottom:10px;'>💎</div>
+  <div style='font-family:Playfair Display,serif; font-size:1.1rem; font-weight:700; color:#e8c76a; margin-bottom:10px;'>③ 단어 저장 — 지식 저장소</div>
+  <div style='font-size:0.9rem; color:#9a9180; line-height:2.0;'>
+    기사 분석이 끝난 뒤, 각 기사 아래에 <b style='color:#f0ece2;'>단어 입력창</b>이 나와요.<br>
+    생소한 용어나 기억하고 싶은 단어를 입력하고 <b style='color:#c9a84c;'>「저장」</b> 버튼을 누르면<br>
+    왼쪽 사이드바 <b style='color:#f0ece2;'>📒 지식 저장소</b>에 영구 보관돼요.<br><br>
+    저장된 단어는 언제든 수정하거나 삭제할 수 있어요.<br>
+    다음에 다시 로그인해도 그대로 남아 있으니 걱정 마세요!
+  </div>
+</div>
+
+<!-- 기능 소개 카드 4 -->
+<div style='background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); border-radius:16px; padding:28px 32px; margin-bottom:20px;'>
+  <div style='font-size:1.5rem; margin-bottom:10px;'>🔖</div>
+  <div style='font-family:Playfair Display,serif; font-size:1.1rem; font-weight:700; color:#e8c76a; margin-bottom:10px;'>④ 북마크 — 기사 저장</div>
+  <div style='font-size:0.9rem; color:#9a9180; line-height:2.0;'>
+    마음에 드는 기사는 <b style='color:#c9a84c;'>「🔖」 버튼</b>으로 저장할 수 있어요.<br>
+    저장된 기사는 왼쪽 사이드바 <b style='color:#f0ece2;'>🔖 북마크</b> 목록에서 확인하고<br>
+    언제든 원문 링크로 다시 읽을 수 있어요.<br>
+    같은 기사를 두 번 저장해도 중복 저장은 되지 않으니 안심하세요.
+  </div>
+</div>
+
+<!-- 기능 소개 카드 5 -->
+<div style='background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); border-radius:16px; padding:28px 32px; margin-bottom:20px;'>
+  <div style='font-size:1.5rem; margin-bottom:10px;'>⚙️</div>
+  <div style='font-family:Playfair Display,serif; font-size:1.1rem; font-weight:700; color:#e8c76a; margin-bottom:10px;'>⑤ 사이드바 설정 활용하기</div>
+  <div style='font-size:0.9rem; color:#9a9180; line-height:2.0;'>
+    왼쪽 사이드바에서 <b style='color:#c9a84c;'>📅 검색 기간</b> 슬라이더로 1~14일 사이로 조절할 수 있어요.<br>
+    "오늘 뉴스"만 보고 싶으면 1일, 최근 2주 동향이 궁금하면 14일로 설정하세요.<br><br>
+    뉴스 비서실 첫 화면에서는 <b style='color:#f0ece2;'>🇰🇷 한국 / 🌐 해외 / 🗺️ 전체</b> 중<br>
+    원하는 뉴스 수급 지역도 선택할 수 있어요.
+  </div>
+</div>
+
+<!-- 팁 박스 -->
+<div style='background:rgba(92,196,122,0.05); border:1px solid rgba(92,196,122,0.2); border-left:3px solid #5cc47a; border-radius:12px; padding:22px 26px; margin-bottom:20px;'>
+  <div style='font-size:0.88rem; font-weight:700; color:#5cc47a; margin-bottom:12px; letter-spacing:0.3px;'>🐾 루키의 TIP</div>
+  <div style='font-size:0.87rem; color:#9a9180; line-height:2.0;'>
+    • 분석 후 채팅창에서 <b style='color:#f0ece2;'>"이 기사에서 ~가 뭐야?"</b>처럼 물어보면 내용 기반으로 답해드려요.<br>
+    • 여러 기사를 한 번에 선택해서 분석하면 흐름을 한눈에 파악할 수 있어요.<br>
+    • <b style='color:#f0ece2;'>PC + 다크 모드</b> 환경에서 가장 예쁘게 보여요 🌙<br>
+    • 오류나 불편한 점은 <a href='mailto:compway@yu.ac.kr' style='color:#5cc47a;'>compway@yu.ac.kr</a>로 언제든 보내주세요.
+  </div>
+</div>
+
+<div style='text-align:center; padding:32px 0 48px; font-size:0.88rem; color:#5c5648;'>
+  준비되셨으면 위 <b style='color:#c9a84c;'>🐶 루키 비서실</b> 탭으로 이동해서 시작해보세요!
+</div>
+
+</div>
+""", unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════════════════════
+# TAB 3 — 뉴스 비서실
+# ══════════════════════════════════════════════════════════════
+with tab3:
 
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"], avatar=ROOKIE_IMG if msg["role"] == "assistant" else None):
@@ -1001,7 +1110,8 @@ with tab2:
 오류·개선사항: <a href='mailto:compway@yu.ac.kr'>compway@yu.ac.kr</a><br><br>
 <span style='color:#5c5648; font-size:0.8rem;'>
 1차: 2026/03/17 22:40 · 2차(UI): 2026/03/17 23:25 · 3차(채팅 개선): 2026/03/18 07:23 · 4차(언어·지역 선택): 2026/03/18 11:32 · 5차(UI전면개편,로그인 기능, 북마크 저장기능의 일부): 2026/03/18 16:04<br>
-· 6차(데이터베이스 수정, 보안 로그 수정, 지식 저장소 기능의 일부, 새로고침 시 로그인 화면으로 넘어가는 버그 수정(보안 재검토 필요): 2026/03/18 16:11
+· 6차(데이터베이스 수정, 보안 로그 수정, 지식 저장소 기능의 일부, 새로고침 시 로그인 화면으로 넘어가는 버그 수정(보안 재검토 필요): 2026/03/18 16:11<br>
+· 7차(저장/북마크 None 버그 수정, 루키 사용법 탭 추가, 분석 완료 후 뒤로가기 버튼 추가): 2026/03/18
 </span>
 </div>
 </div>
@@ -1151,7 +1261,7 @@ JSON:"""
                     analysis = f"오류: {e}"; st.error(analysis)
 
                 # ★ 분석 결과 캐시 저장
-                st.session_state.analyzed_results.append({"item": item, "analysis": analysis})
+                st.session_state.analyzed_results.append({"item": item, "analysis": analysis or ""})
 
                 st.markdown(f"[기사 원문]({item['link']}) · {item['source']} · {item['date']}")
                 st.markdown("---")
@@ -1177,13 +1287,23 @@ JSON:"""
                 saved = db_save_bookmark(uc, {
                     "title": item["title"], "link": item["link"],
                     "source": item["source"], "date": item["date"],
-                    "summary": analysis[:300]
+                    "summary": (analysis or "")[:300]
                 })
                 if saved:
                     st.session_state.bookmarks = db_load_bookmarks(uc)
                     st.toast("🔖 북마크 저장!")
                 else:
                     st.toast("이미 북마크된 기사입니다.")
+
+        # ── 뒤로가기 버튼 ──────────────────────────────────────────
+        st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
+        col_back, col_spacer = st.columns([1, 3])
+        if col_back.button("← 새 뉴스 검색", key="btn_back_to_search"):
+            st.session_state.analyzed_results  = []
+            st.session_state.filtered_news_cache = []
+            st.session_state.pending_news       = []
+            st.session_state.news_context       = ""
+            st.rerun()
 
 # ── 스마트 채팅: 의도 분류 + 파라미터 추출 파이프라인 ─────────
 def classify_intent(user_input: str) -> dict:
@@ -1491,7 +1611,7 @@ def run_news_from_chat(params: dict):
             saved = db_save_bookmark(user_code, {
                 "title": item["title"], "link": item["link"],
                 "source": item["source"], "date": item["date"],
-                "summary": analysis[:300]
+                "summary": (analysis or "")[:300]
             })
             if saved:
                 st.session_state.bookmarks = db_load_bookmarks(user_code)
