@@ -900,6 +900,8 @@ def _parse_rss(url: str, days: int) -> list:
             # HTML 태그 제거
             summary = re.sub(r"<[^>]+>", "", summary).strip()[:500]
             source  = feed.feed.get("title", url.split("/")[2])
+            # 피드 제목 정제 — "AI타임스 - 전체기사", "연합뉴스 :: 최신기사" 등 불필요한 접미사 제거
+            source  = re.split(r'\s*[-::|·]\s*(전체|최신|RSS|feed|기사|뉴스|all)', source, flags=re.IGNORECASE)[0].strip()
             if title and link:
                 items.append({"source": source, "title": title, "link": link,
                                "summary": summary, "date": date_str, "image": None})
