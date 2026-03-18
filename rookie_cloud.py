@@ -349,7 +349,7 @@ with st.sidebar:
         st.rerun()
 
 # ── 메인 ──────────────────────────────────────────────────────
-st.markdown("# 🐾 Rookie — 팀 비서실")
+st.markdown("# 🐾 Rookie — 팀 비서실: 0차(비공개) 베타테스트")
 
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"], avatar=ROOKIE_IMG if msg["role"] == "assistant" else None):
