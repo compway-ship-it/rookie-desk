@@ -408,6 +408,80 @@ p, li, label { color: var(--text2) !important; }
   font-weight: 400;
   letter-spacing: 0.5px;
 }
+
+/* ══ 모바일 반응형 ════════════════════════════════════════ */
+@media (max-width: 768px) {
+
+  /* 히어로 섹션 */
+  .hero-wrap { padding: 40px 0 32px; }
+  .hero-headline { font-size: 1.9rem !important; letter-spacing: -0.5px; }
+  .hero-body { font-size: 0.92rem; margin-bottom: 36px; padding: 0 4px; }
+  .hero-eyebrow { font-size: 0.65rem; letter-spacing: 2px; padding: 4px 14px; }
+
+  /* 통계 카드 — 3열 → 3열 유지하되 크기 축소 */
+  .stat-row { gap: 10px; margin: 28px 0; }
+  .stat-card { padding: 16px 10px; border-radius: 10px; }
+  .stat-num { font-size: 1.6rem; }
+  .stat-label { font-size: 0.72rem; }
+
+  /* 에이전트 카드 — 3열 → 1열 */
+  .agent-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    margin: 0 0 36px;
+  }
+  .a-card { padding: 24px 20px 20px; border-radius: 16px; }
+  .a-icon { font-size: 2rem; margin-bottom: 12px; }
+  .a-name { font-size: 1.2rem; }
+  .a-desc { font-size: 0.84rem; }
+  .a-feature { font-size: 0.8rem; padding: 10px 12px; }
+
+  /* CTA 섹션 */
+  .cta-section { padding: 32px 20px; }
+  .cta-title { font-size: 1.3rem; }
+  .cta-sub { font-size: 0.84rem; }
+
+  /* 개발 노트 */
+  .notice-box { padding: 16px 18px; font-size: 0.82rem; }
+  .notice-title { font-size: 0.92rem; }
+
+  /* 리포트 제목 */
+  .report-title { font-size: 1.05rem; }
+
+  /* 탭 버튼 */
+  [data-testid="stTabs"] button[role="tab"] {
+    font-size: 0.82rem !important;
+    padding: 8px 12px !important;
+  }
+
+  /* 슬라이더 패딩 축소 */
+  [data-testid="stSlider"] { padding: 10px 12px !important; }
+
+  /* 라디오 버튼 — 모바일에서 세로 정렬 */
+  [data-testid="stRadio"] > div {
+    flex-direction: column !important;
+    gap: 6px !important;
+  }
+  [data-testid="stRadio"] label {
+    width: 100% !important;
+    text-align: center !important;
+  }
+
+  /* 채팅 입력창 */
+  [data-testid="stChatInput"] > div { border-radius: 10px !important; }
+
+  /* 기사 이미지 모바일 꽉차게 */
+  [data-testid="stImage"] img { width: 100% !important; max-width: 100% !important; }
+}
+
+@media (max-width: 480px) {
+  /* 극소형 화면 추가 대응 */
+  .hero-headline { font-size: 1.55rem !important; }
+  .stat-row { grid-template-columns: repeat(3, 1fr); }
+  .stat-num { font-size: 1.3rem; }
+  .a-name { font-size: 1.1rem; }
+  .hero-body { font-size: 0.85rem; }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -650,11 +724,9 @@ with tab2:
 ⓕ 클라우드 서버 특성상 배포 안정성에 일부 한계가 있을 수 있습니다.<br><br>
 ⓖ PC 환경 및 Dark 모드 사용을 권장합니다.<br><br>
 <b style='color:#c9a84c;'>테스터분들께:</b> 현재 뉴스는 인기·조회수 기반 알고리즘으로 선별됩니다. 이 방식이 좋은지, 혹은 더 다양한 뉴스 노출이 필요한지 피드백 주시면 적극 반영하겠습니다.<br><br>
-<b style='color:#c9a84c;'>테스터분들께:</b> 5차 업데이트를 통해 1:1 채팅으로 아주 기본적인 뉴스 생성 요청이 가능해 졌습니다. 이용에 버그 및 부족한 점 발견 시 피드백 주시면 적극 반영하겠습니다.<br><br>
 오류·개선사항: <a href='mailto:compway@yu.ac.kr'>compway@yu.ac.kr</a><br><br>
 <span style='color:#5c5648; font-size:0.8rem;'>
-1차: 2026/03/17 22:40 · 2차(UI): 2026/03/17 23:25 · 3차(채팅 개선): 2026/03/18 07:23 · 4차(언어·지역 선택): 2026/03/18 11:32<br>
-5차(모델 추론 파라미터개선 및 UI 업데이트): 2026/03/18 14:44
+1차: 2026/03/17 22:40 · 2차(UI): 2026/03/17 23:25 · 3차(채팅 개선): 2026/03/18 07:23 · 4차(언어·지역 선택): 2026/03/18 11:32 · 5차(1:1·채팅 기능 개선 및 모바일 UI개선): 2026/03/18 14:44
 </span>
 </div>
 </div>
@@ -673,6 +745,24 @@ with tab2:
                 st.caption("한국 언론사 기사만 검색합니다.")
                 count = st.select_slider("기사 개수", options=[1, 2, 3, 4, 5], value=3)
             st.markdown("---")
+
+            # ── 카테고리 버튼 (모바일 2열 / 데스크탑 4열) ──
+            st.markdown("""
+<style>
+/* 모바일에서 카테고리 버튼 2열 */
+@media (max-width: 768px) {
+  div[data-testid="stHorizontalBlock"] {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+  div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+}
+</style>
+""", unsafe_allow_html=True)
             cats = list(CATEGORY_KEYWORDS.keys())
             for row in [cats[i:i+4] for i in range(0, len(cats), 4)]:
                 for col, cat in zip(st.columns(4), row):
