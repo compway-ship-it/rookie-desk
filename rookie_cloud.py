@@ -566,6 +566,62 @@ def auth_login(code: str):
     except Exception:
         return None
 
+# ── 이용 횟수 제한 (성무진 제외) ─────────────────────────────
+UNLIMITED_USERS = {"성무진"}          # 무제한 허용 이름 목록
+DAILY_LIMIT_KR  = 5                   # 한국 뉴스 1회 분석 = 1카운트
+DAILY_LIMIT_OVERSEAS = 3              # 해외/전체 뉴스 1회 분석 = 1카운트
+
+def _usage_key(user_code: str) -> str:
+    """오늘 날짜 기반 Supabase 저장 키 — 예: usage_2026-03-18"""
+    return f"usage_{_kst_now().strftime('%Y-%m-%d')}"
+
+def db_get_usage(user_code: str) -> dict:
+    """오늘 사용 횟수 조회. {"kr": 0, "overseas": 0}"""
+    try:
+        key = _usage_key(user_code)
+        res = supabase.table("users").select(key).eq("code", user_code).execute()
+        if res.data and res.data[0].get(key):
+            return res.data[0][key]
+    except Exception:
+        pass
+    return {"kr": 0, "overseas": 0}
+
+def db_increment_usage(user_code: str, region_mode: str):
+    """분석 1회 완료 시 카운트 +1"""
+    try:
+        key   = _usage_key(user_code)
+        usage = db_get_usage(user_code)
+        if region_mode == "한국":
+            usage["kr"] = usage.get("kr", 0) + 1
+        else:
+            usage["overseas"] = usage.get("overseas", 0) + 1
+        supabase.table("users").update({key: usage}).eq("code", user_code).execute()
+    except Exception:
+        pass
+
+def check_usage_limit(user_name: str, user_code: str, region_mode: str) -> tuple[bool, str]:
+    """
+    (허용 여부, 안내 메시지) 반환.
+    무제한 유저면 항상 (True, "").
+    """
+    if user_name in UNLIMITED_USERS:
+        return True, ""
+    usage = db_get_usage(user_code)
+    if region_mode == "한국":
+        used  = usage.get("kr", 0)
+        limit = DAILY_LIMIT_KR
+        label = "한국 뉴스"
+    else:
+        used  = usage.get("overseas", 0)
+        limit = DAILY_LIMIT_OVERSEAS
+        label = "해외/전체 뉴스"
+    if used >= limit:
+        return False, (
+            f"오늘 **{label}** 분석 가능 횟수({limit}회)를 모두 사용했습니다. 🐾\n\n"
+            f"내일 자정(KST)에 횟수가 초기화됩니다."
+        )
+    return True, f"오늘 **{label}** 남은 횟수: {limit - used}회"
+
 # ── DB 헬퍼 함수 (user_code 기반 개인별 분리) ────────────────
 def db_load_vocab(user_code: str) -> dict:
     try:
@@ -628,6 +684,7 @@ if "pending_news" not in st.session_state: st.session_state.pending_news = []
 if "filtered_news_cache"  not in st.session_state: st.session_state.filtered_news_cache  = []
 if "analyzed_results"     not in st.session_state: st.session_state.analyzed_results     = []
 if "current_user" not in st.session_state: st.session_state.current_user = None
+if "show_category_ui"     not in st.session_state: st.session_state.show_category_ui     = True
 
 # ── URL 쿼리 파라미터로 로그인 유지 ──────────────────────────
 # ?code=ROOKIE-XXXXXX 가 URL에 있으면 자동 로그인
@@ -1162,12 +1219,16 @@ with tab3:
 1차: 2026/03/17 22:40 · 2차(UI): 2026/03/17 23:25 · 3차(채팅 개선): 2026/03/18 07:23 · 4차(언어·지역 선택): 2026/03/18 11:32 · 5차(UI전면개편,로그인 기능, 북마크 저장기능의 일부): 2026/03/18 16:04<br>
 · 6차(데이터베이스 수정, 보안 로그 수정, 지식 저장소 기능의 일부, 새로고침 시 로그인 화면으로 넘어가는 버그 수정(보안 재검토 필요): 2026/03/18 16:11<br>
 · 7차(저장/북마크 None 버그 수정, 루키 사용법 탭 추가, 분석 완료 후 뒤로가기 버튼 추가): 2026/03/18<br>
-· 8차(KST 날짜 인식, system prompt 날짜 주입, 검색 키워드 랜덤 샘플링 + 당일 날짜 쿼리 강화): 2026/03/18
+· 8차(KST 날짜 인식, system prompt 날짜 주입, 검색 키워드 랜덤 샘플링 + 당일 날짜 쿼리 강화): 2026/03/18<br>
+· 9차(뒤로가기 후 카테고리 UI 재표시 버그 수정, 이용 횟수 제한): 2026/03/18
 </span>
 </div>
 </div>
 """, unsafe_allow_html=True)
 
+    # ── 카테고리 선택 UI (첫 진입 또는 뒤로가기 후) ─────────────
+    if st.session_state.show_category_ui:
+        with st.chat_message("assistant", avatar=ROOKIE_IMG):
             st.markdown(f"안녕하십니까. 최근 **{days_range}일**간의 뉴스를 분석해 드립니다.")
             st.markdown("**🌍 뉴스 수급 지역**")
             region_choice = st.radio("", options=["🇰🇷 한국 신문", "🌐 해외 신문", "🗺️ 전체 (한국 + 해외)"], horizontal=True, label_visibility="collapsed")
@@ -1203,6 +1264,8 @@ with tab3:
             for row in [cats[i:i+4] for i in range(0, len(cats), 4)]:
                 for col, cat in zip(st.columns(4), row):
                     if col.button(cat):
+                        st.session_state.show_category_ui  = False
+                        st.session_state._last_region_mode = selected_region
                         st.session_state.update(selected_category=cat, selected_count=count, selected_region=selected_region)
                         st.session_state.messages.append({"role": "user", "content": f"[{cat}] 최근 {days_range}일 {region_choice} 뉴스 {count}개 스크랩"})
                         st.rerun()
@@ -1211,41 +1274,52 @@ with tab3:
         cat = st.session_state.pop("selected_category")
         cnt = st.session_state.pop("selected_count")
         region_mode = st.session_state.pop("selected_region", "한국")
-        with st.chat_message("assistant", avatar=ROOKIE_IMG):
-            loading_placeholder = st.empty()
-            loading_placeholder.markdown(f"🔍 **[{cat}]** 뉴스를 수집하고 품질을 확인하는 중...")
-            raw_news = fetch_news(cat, cnt * 3, days_range, region_mode)
-            loading_placeholder.empty()
 
-            if not raw_news:
-                st.warning("검색 결과가 없습니다. 다른 분야를 선택해 주세요.")
-            else:
-                # ── ① 품질 필터링 ──────────────────────────────────
-                titles_text = "\n".join([f"{i+1}. {r['title']}" for i, r in enumerate(raw_news)])
-                filter_prompt = f"""아래 뉴스 제목 목록에서 다음 기준으로 상위 {cnt}개를 선택하세요.
+        # ── 이용 횟수 사전 체크 ────────────────────────────────────
+        allowed, msg = check_usage_limit(user_name, user_code, region_mode)
+        if not allowed:
+            with st.chat_message("assistant", avatar=ROOKIE_IMG):
+                st.warning(msg)
+            st.session_state.show_category_ui = True
+        else:
+            if msg:
+                st.info(msg)   # 남은 횟수 안내
+
+            with st.chat_message("assistant", avatar=ROOKIE_IMG):
+                loading_placeholder = st.empty()
+                loading_placeholder.markdown(f"🔍 **[{cat}]** 뉴스를 수집하고 품질을 확인하는 중...")
+                raw_news = fetch_news(cat, cnt * 3, days_range, region_mode)
+                loading_placeholder.empty()
+
+                if not raw_news:
+                    st.warning("검색 결과가 없습니다. 다른 분야를 선택해 주세요.")
+                else:
+                    # ── ① 품질 필터링 ──────────────────────────────────
+                    titles_text = "\n".join([f"{i+1}. {r['title']}" for i, r in enumerate(raw_news)])
+                    filter_prompt = f"""아래 뉴스 제목 목록에서 다음 기준으로 상위 {cnt}개를 선택하세요.
 기준: 중복 사건 제거(같은 사건은 1개만), 낚시성·광고성 제거, 다양한 주제 포함
 뉴스 목록:\n{titles_text}
 선택한 기사 번호만 JSON 배열로 응답. 예시: [1, 3, 5]
 JSON:"""
-                selected_indices = list(range(min(cnt, len(raw_news))))
-                try:
-                    resp = groq_client.chat.completions.create(
-                        model=MODEL_NAME,
-                        messages=[{"role": "user", "content": filter_prompt}],
-                        max_tokens=60, stream=False
-                    )
-                    raw_r = resp.choices[0].message.content.strip()
-                    if "</think>" in raw_r: raw_r = raw_r.split("</think>")[-1].strip()
-                    arr_match = re.search(r'\[.*?\]', raw_r, re.DOTALL)
-                    if arr_match:
-                        parsed = json.loads(arr_match.group())
-                        selected_indices = [int(x)-1 for x in parsed if 0 < int(x) <= len(raw_news)][:cnt]
-                except Exception:
-                    pass
+                    selected_indices = list(range(min(cnt, len(raw_news))))
+                    try:
+                        resp = groq_client.chat.completions.create(
+                            model=MODEL_NAME,
+                            messages=[{"role": "user", "content": filter_prompt}],
+                            max_tokens=60, stream=False
+                        )
+                        raw_r = resp.choices[0].message.content.strip()
+                        if "</think>" in raw_r: raw_r = raw_r.split("</think>")[-1].strip()
+                        arr_match = re.search(r'\[.*?\]', raw_r, re.DOTALL)
+                        if arr_match:
+                            parsed = json.loads(arr_match.group())
+                            selected_indices = [int(x)-1 for x in parsed if 0 < int(x) <= len(raw_news)][:cnt]
+                    except Exception:
+                        pass
 
-                filtered = [raw_news[i] for i in selected_indices if i < len(raw_news)]
-                # ★ session_state에 저장 → 체크박스 클릭 시 리런해도 유지됨
-                st.session_state.filtered_news_cache = filtered
+                    filtered = [raw_news[i] for i in selected_indices if i < len(raw_news)]
+                    # ★ session_state에 저장 → 체크박스 클릭 시 리런해도 유지됨
+                    st.session_state.filtered_news_cache = filtered
 
     # ── ③ 헤드라인 카드 + 체크박스 ────────────────────────────────
     # selected_category 블록과 분리 → 체크박스 변경 시 리런해도 이 블록만 재렌더링
@@ -1271,7 +1345,8 @@ JSON:"""
                 if not chosen:
                     st.warning("최소 1개 이상 선택해 주세요.")
                 else:
-                    st.session_state.pending_news = chosen
+                    st.session_state.pending_news   = chosen
+                    st.session_state.pending_region = st.session_state.get("_last_region_mode", "한국")
                     st.session_state.filtered_news_cache = []  # 카드 제거
                     st.rerun()
 
@@ -1320,6 +1395,9 @@ JSON:"""
                 parts.append(f"**{i+1}. {item['title']}**\n{analysis}")
 
             st.session_state.messages.append({"role": "assistant", "content": "\n\n".join(parts)})
+            # ── 이용 횟수 +1 ──────────────────────────────────────
+            _region_used = st.session_state.pop("pending_region", "한국")
+            db_increment_usage(user_code, _region_used)
 
     # ── 분석 완료 후 저장/북마크 UI (session_state 기반으로 항상 렌더링) ──
     if st.session_state.get("analyzed_results"):
@@ -1350,10 +1428,11 @@ JSON:"""
         st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
         col_back, col_spacer = st.columns([1, 3])
         if col_back.button("← 새 뉴스 검색", key="btn_back_to_search"):
-            st.session_state.analyzed_results  = []
+            st.session_state.analyzed_results    = []
             st.session_state.filtered_news_cache = []
-            st.session_state.pending_news       = []
-            st.session_state.news_context       = ""
+            st.session_state.pending_news        = []
+            st.session_state.news_context        = ""
+            st.session_state.show_category_ui    = True
             st.rerun()
 
 # ── 스마트 채팅: 의도 분류 + 파라미터 추출 파이프라인 ─────────
