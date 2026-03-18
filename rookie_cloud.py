@@ -989,6 +989,7 @@ with tab2:
 <div class='notice-box'>
 <div class='notice-title'>개발 노트</div>
 <div style='font-size:0.88rem; line-height:2.1; color:#9a9180; padding:4px 0;'>
+<b style='color:#c9a84c;'>안녕하세요 테스터님! </b><br>
 ⓐ 현재 AI Rookie는 개발 중인 모델의 일부이며, 완전히 구현되지 않아 오류가 발생할 수 있습니다.<br><br>
 ⓑ 미구현 기능: 지식저장소 영구보존, 1:1 채팅의 자연스러운 흐름, 단어 저장 기능(*3월 18일 기준 일부 구현)<br><br>
 ⓒ 현재 환경은 <b style='color:#c9a84c;'>신문 및 시사 뉴스 스크랩</b> 전용으로 제작되었습니다.<br><br>
