@@ -560,7 +560,7 @@ with tab1:
 <div class='agent-grid'>
 
   <div class='a-card'>
-    <span class='a-icon'>💎</span>
+    <span class='a-icon'>🐱</span>
     <div class='a-pill beta'>Beta 3</div>
     <div class='a-name'>루비</div>
     <div class='a-tagline'>수석 투자 비서</div>
@@ -591,7 +591,7 @@ with tab1:
 
   <div class='a-card'>
     <span class='a-icon'>🐶</span>
-    <div class='a-pill soon'>Coming Soon</div>
+    <div class='a-pill soon'>0차 비공개 베타</div>
     <div class='a-name'>루키</div>
     <div class='a-tagline'>시사 전문 비서</div>
     <div class='a-desc'>
@@ -602,6 +602,10 @@ with tab1:
     <div class='a-feature'>경제·정치·과학 등 8대 분야 자동 수집 및 분류</div>
     <div class='a-feature'>단순 요약을 넘어선 심층 배경 분석과 전망 제공</div>
     <div class='a-feature'>스크랩 내용 기반 AI와의 1:1 심층 토론 지원</div>
+    <div style='margin-top:20px; padding:12px 16px; background:rgba(92,196,122,0.07); border:1px solid rgba(92,196,122,0.2); border-radius:10px; font-size:0.8rem; color:#5cc47a; line-height:1.7;'>
+      🎁 &nbsp;<b>정식 배포 시 루키는 무료로 이용 가능합니다.</b><br>
+      <span style='color:#3a7a4a; font-size:0.75rem;'>현재는 비공개 테스트 단계입니다.</span>
+    </div>
   </div>
 
 </div>
