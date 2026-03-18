@@ -3,7 +3,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 from duckduckgo_search import DDGS
 from groq import Groq
-import os, base64, time
+import os, base64, time, json, re
 
 st.set_page_config(page_title="루키 비서실", layout="wide", page_icon="🐾")
 
@@ -650,9 +650,11 @@ with tab2:
 ⓕ 클라우드 서버 특성상 배포 안정성에 일부 한계가 있을 수 있습니다.<br><br>
 ⓖ PC 환경 및 Dark 모드 사용을 권장합니다.<br><br>
 <b style='color:#c9a84c;'>테스터분들께:</b> 현재 뉴스는 인기·조회수 기반 알고리즘으로 선별됩니다. 이 방식이 좋은지, 혹은 더 다양한 뉴스 노출이 필요한지 피드백 주시면 적극 반영하겠습니다.<br><br>
+<b style='color:#c9a84c;'>테스터분들께:</b> 5차 업데이트를 통해 1:1 채팅으로 아주 기본적인 뉴스 생성 요청이 가능해 졌습니다. 이용에 버그 및 부족한 점 발견 시 피드백 주시면 적극 반영하겠습니다.<br><br>
 오류·개선사항: <a href='mailto:compway@yu.ac.kr'>compway@yu.ac.kr</a><br><br>
 <span style='color:#5c5648; font-size:0.8rem;'>
-1차: 2026/03/17 22:40 · 2차(UI): 2026/03/17 23:25 · 3차(채팅 개선): 2026/03/18 07:23 · 4차(언어·지역 선택): 2026/03/18 11:32
+1차: 2026/03/17 22:40 · 2차(UI): 2026/03/17 23:25 · 3차(채팅 개선): 2026/03/18 07:23 · 4차(언어·지역 선택): 2026/03/18 11:32<br>
+5차(모델 추론 파라미터개선 및 UI 업데이트): 2026/03/18 14:44
 </span>
 </div>
 </div>
@@ -684,16 +686,14 @@ with tab2:
         cnt = st.session_state.pop("selected_count")
         region_mode = st.session_state.pop("selected_region", "한국")
         with st.chat_message("assistant", avatar=ROOKIE_IMG):
+            # ── 텍스트 로딩 표시 (영상 제거) ──
             loading_placeholder = st.empty()
-            with loading_placeholder.container():
-                st.markdown("<div style='text-align:center;padding:24px 0;'><div style='font-family:Playfair Display,serif;font-size:1.3rem;color:#c9a84c;font-weight:700;margin-bottom:10px;'>루키가 정리중이에요</div><div style='font-size:0.85rem;color:#5c5648;'>잠시만 기다려 주십시오</div></div>", unsafe_allow_html=True)
-                video_path = os.path.join(os.path.dirname(__file__), "Video Project.mp4")
-                with open(video_path, "rb") as f:
-                    video_b64 = base64.b64encode(f.read()).decode()
-                components.html(f'<video width="100%" autoplay playsinline loop><source src="data:video/mp4;base64,{video_b64}" type="video/mp4"></video>', height=400)
+            loading_placeholder.markdown(
+                f"🔍 **[{cat}]** 분야 최신 뉴스를 수집하고 있습니다..."
+            )
             news_data = fetch_news(cat, cnt, days_range, region_mode)
-            time.sleep(7)
             loading_placeholder.empty()
+
             if not news_data:
                 st.warning("검색 결과가 없습니다. 다른 분야를 선택해 주세요.")
             else:
@@ -734,19 +734,349 @@ with tab2:
                     parts.append(f"**{i+1}. {item['title']}**\n{analysis}")
                 st.session_state.messages.append({"role": "assistant", "content": "\n\n".join(parts)})
 
-if user_input := st.chat_input("루키에게 무엇이든 물어보세요"):
+# ── 스마트 채팅: 의도 분류 + 파라미터 추출 파이프라인 ─────────
+def classify_intent(user_input: str) -> dict:
+    """
+    1단계: 사용자 입력이 뉴스 요청인지 일반 질문인지 분류.
+    퓨샷 예시로 추론 정확도 강화.
+    """
+    # ── 코드 레벨 1차 판단 (빠른 키워드 매칭) ──────────────────
+    NEWS_KEYWORDS = [
+        "뉴스","기사","소식","이슈","시황","동향","트렌드","현황","상황","근황",
+        "최신","최근","요즘","요새","요즈음","오늘","어제","이번주","이번달",
+        "보여줘","찾아줘","알려줘","알려봐","검색해","가져와","스크랩","정리해줘",
+        "어때","어떻게 돼","어떻게 됐","궁금해","뭐 있어","뭐가 있","뭐 나왔",
+        "관련","관련해서","관련된","분야","섹터","업계",
+        "주가","증시","코스피","코스닥","나스닥","주식","환율","금리","물가","부동산",
+        "아파트","전세","청약","반도체","엔비디아","삼성","애플","테슬라",
+        "전쟁","분쟁","선거","정치","외교","대통령","국회","법안","정책",
+        "AI","인공지능","챗GPT","클로드","로봇","자율주행","양자","우주","기후","환경"
+    ]
+    NON_NEWS_KEYWORDS = [
+        "설명해줘","무슨 뜻","의미가","뭐야","이게 뭐","어떻게 하","방법","알려줘 어떻게",
+        "아까","방금","위에서","앞에서","이전에","그 기사","그 뉴스","내용에서",
+        "안녕","반가워","고마워","감사","수고","잘 부탁","처음 뵙","루키야",
+        "점심","저녁","날씨","오늘 뭐","심심","재미있","웃긴","농담"
+    ]
+    lower_input = user_input.lower()
+    # 명확히 뉴스 아닌 것 먼저 필터
+    if any(kw in user_input for kw in NON_NEWS_KEYWORDS):
+        # 단, 뉴스 키워드가 같이 있으면 뉴스 요청일 수 있음
+        has_news_kw = any(kw in user_input for kw in NEWS_KEYWORDS[:20])
+        if not has_news_kw:
+            return {"is_news_request": False}
+    # 명확히 뉴스인 것 바로 반환
+    if any(kw in user_input for kw in NEWS_KEYWORDS):
+        return {"is_news_request": True}
+
+    # ── LLM 2차 판단 (애매한 경우만) ────────────────────────────
+    prompt = f"""사용자 메시지가 뉴스/시사 검색 요청인지 판단하여 JSON만 출력하세요.
+
+규칙:
+- 새로운 정보나 현재 상황을 알고 싶어하면 true
+- 이미 읽은 내용에 대한 질문이거나 일반 대화면 false
+
+예시 (true — 뉴스 요청):
+"반도체 최신 동향" → {{"is_news_request":true}}
+"미국 금리 어떻게 됐어" → {{"is_news_request":true}}
+"요즘 부동산 시장 상황" → {{"is_news_request":true}}
+"글로벌 경제 위기 관련해서" → {{"is_news_request":true}}
+"K팝 최근 소식" → {{"is_news_request":true}}
+"주식 시장 지금 어때" → {{"is_news_request":true}}
+"AI 스타트업 투자 현황" → {{"is_news_request":true}}
+"북한 요즘 뭐해" → {{"is_news_request":true}}
+"테슬라 근황" → {{"is_news_request":true}}
+"유럽 에너지 위기 상황" → {{"is_news_request":true}}
+"중국 경제 어떻게 되고 있어" → {{"is_news_request":true}}
+"국내 증시 분위기" → {{"is_news_request":true}}
+
+예시 (false — 일반 대화/질문):
+"아까 기사에서 PER이 뭐야" → {{"is_news_request":false}}
+"방금 본 뉴스 다시 설명해줘" → {{"is_news_request":false}}
+"금리 인상이 주식에 미치는 영향" → {{"is_news_request":false}}
+"안녕 루키" → {{"is_news_request":false}}
+"위 내용 요약해줘" → {{"is_news_request":false}}
+"그게 무슨 의미야" → {{"is_news_request":false}}
+"ESG가 뭐야" → {{"is_news_request":false}}
+"이전에 읽은 기사 기억해?" → {{"is_news_request":false}}
+
+입력: "{user_input}"
+JSON:"""
+
+    try:
+        response = groq_client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=30,
+            stream=False,
+        )
+        raw = response.choices[0].message.content.strip()
+        if "</think>" in raw:
+            raw = raw.split("</think>")[-1].strip()
+        match = re.search(r'\{.*?\}', raw, re.DOTALL)
+        if match:
+            return json.loads(match.group())
+    except Exception:
+        pass
+    return {"is_news_request": False}
+
+
+def extract_news_params(user_input: str) -> dict:
+    """
+    2단계: 뉴스 요청에서 카테고리·지역·기간·개수를 추출.
+    코드 레벨 키워드 매핑 + 퓨샷 강화 LLM으로 정확도 극대화.
+    """
+    defaults = {"category": "글로벌 뉴스", "region": "한국", "days": 7, "count": 3}
+
+    # ── 코드 레벨 1차 추출 (키워드 매핑) ────────────────────────
+    CATEGORY_MAP = {
+        "경제/증시": [
+            "주가","증시","코스피","코스닥","나스닥","주식","환율","금리","물가",
+            "인플레이션","경제","펀드","채권","IPO","상장","배당","투자","매출",
+            "실적","무역","수출","수입","달러","엔화","원화","GDP","기준금리",
+            "한국은행","M&A","인수합병","벤처","스타트업 투자","VC"
+        ],
+        "AI/미래기술": [
+            "AI","인공지능","챗GPT","GPT","클로드","제미나이","LLM","반도체",
+            "엔비디아","TSMC","삼성전자","SK하이닉스","자율주행","로봇","드론",
+            "양자컴퓨터","메타버스","블록체인","NFT","핀테크","사이버보안","해킹",
+            "딥러닝","머신러닝","빅데이터","클라우드","5G","6G","우주","위성"
+        ],
+        "정치/외교": [
+            "대통령","국회","정치","선거","여당","야당","외교","대사","조약",
+            "북한","김정은","트럼프","바이든","시진핑","푸틴","총리","장관",
+            "청와대","정부","법안","헌법","검찰","법원","탄핵","정책","외무"
+        ],
+        "산업/부동산": [
+            "부동산","아파트","전세","월세","청약","재건축","분양","건설","공사",
+            "자동차","현대차","기아","테슬라","조선","철강","포스코","화학","석유화학",
+            "유통","이커머스","쿠팡","네이버쇼핑","물류","항공","여행","관광","호텔"
+        ],
+        "글로벌 뉴스": [
+            "미국","중국","일본","유럽","러시아","우크라이나","중동","이스라엘",
+            "이란","사우디","인도","브라질","G7","G20","UN","NATO","IMF","세계은행",
+            "전쟁","분쟁","테러","난민","국제","글로벌","해외","외국"
+        ],
+        "과학/환경": [
+            "기후","환경","탄소","온난화","태양광","풍력","수소","원자력","핵융합",
+            "우주","나사","스페이스X","로켓","위성","화성","달","노벨","과학",
+            "바이오","헬스케어","신약","백신","전기차","배터리","ESS","ESG"
+        ],
+        "사회/이슈": [
+            "교육","입시","수능","대학","취업","청년","저출생","고령화","인구",
+            "노동","임금","최저임금","복지","의료","건강보험","사회","범죄","사건",
+            "사고","재난","지진","홍수","화재","언론","미디어","젠더","다문화"
+        ],
+        "문화/라이프": [
+            "K팝","아이돌","드라마","영화","OTT","넷플릭스","유튜브","게임","e스포츠",
+            "스포츠","축구","야구","농구","올림픽","패션","뷰티","음식","맛집",
+            "여행","캠핑","반려동물","웰니스","힐링","라이프스타일","소비","트렌드"
+        ],
+    }
+    REGION_MAP = {
+        "해외": ["미국","중국","일본","유럽","영국","러시아","인도","해외","외국",
+                 "글로벌","international","overseas","abroad","us ","usa","uk "],
+        "전체": ["전세계","전체","모두","국내외","한국과 해외","해외도","국내도"],
+    }
+    COUNT_MAP = {
+        1: ["하나","1개","한 개","한개","하나만","1건","한 건"],
+        2: ["둘","2개","두 개","두개","2건","두 건"],
+        3: ["셋","3개","세 개","세개","3건"],
+        4: ["넷","4개","네 개","네개","4건"],
+        5: ["다섯","5개","다섯 개","다섯개","5건","최대"],
+    }
+    DAYS_MAP = {
+        1:  ["오늘","방금","최신","방금 나온","지금 막","지금 바로","실시간"],
+        3:  ["3일","사흘","최근 3일"],
+        7:  ["이번 주","일주일","7일","한 주"],
+        14: ["이번 달","한 달","14일","2주"],
+    }
+
+    result = dict(defaults)
+
+    # 카테고리 매칭
+    best_cat, best_score = defaults["category"], 0
+    for cat, keywords in CATEGORY_MAP.items():
+        score = sum(1 for kw in keywords if kw.lower() in user_input.lower())
+        if score > best_score:
+            best_score, best_cat = score, cat
+    if best_score > 0:
+        result["category"] = best_cat
+
+    # 지역 매칭
+    for region, keywords in REGION_MAP.items():
+        if any(kw.lower() in user_input.lower() for kw in keywords):
+            result["region"] = region
+            break
+
+    # 개수 매칭
+    for count, keywords in COUNT_MAP.items():
+        if any(kw in user_input for kw in keywords):
+            result["count"] = count
+            break
+
+    # 기간 매칭
+    for days, keywords in DAYS_MAP.items():
+        if any(kw in user_input for kw in keywords):
+            result["days"] = days
+            break
+
+    # 해외/전체면 최대 2개
+    if result["region"] in ["해외", "전체"]:
+        result["count"] = min(result["count"], 2)
+
+    # 키워드 매칭으로 카테고리가 명확히 잡혔으면 LLM 스킵
+    if best_score >= 2:
+        return result
+
+    # ── LLM 2차 추출 (키워드 매칭 불확실한 경우만) ──────────────
+    prompt = f"""사용자 뉴스 요청에서 파라미터를 추출하여 JSON만 출력하세요.
+
+카테고리 목록: 경제/증시, AI/미래기술, 정치/외교, 산업/부동산, 글로벌 뉴스, 과학/환경, 사회/이슈, 문화/라이프
+
+지역: 한국(기본), 해외(외국/미국/영어권 언급시), 전체(둘다 원할때)
+기간(days): 오늘/최신=1, 이번주=7(기본), 이번달=14
+개수(count): 기본3, 해외/전체면 기본2, 최대5
+
+퓨샷 예시:
+"반도체 동향" → {{"category":"AI/미래기술","region":"한국","days":7,"count":3}}
+"미국 연준 금리 결정" → {{"category":"경제/증시","region":"해외","days":7,"count":2}}
+"오늘 부동산 소식" → {{"category":"산업/부동산","region":"한국","days":1,"count":3}}
+"러시아 우크라이나 전쟁 최신" → {{"category":"글로벌 뉴스","region":"전체","days":1,"count":2}}
+"K팝 아이돌 소식 3개" → {{"category":"문화/라이프","region":"한국","days":7,"count":3}}
+"기후변화 국제 협약" → {{"category":"과학/환경","region":"전체","days":7,"count":2}}
+"대통령 지지율" → {{"category":"정치/외교","region":"한국","days":7,"count":3}}
+"취업 청년 실업 현황" → {{"category":"사회/이슈","region":"한국","days":7,"count":3}}
+"삼성전자 실적 발표" → {{"category":"경제/증시","region":"한국","days":3,"count":3}}
+"테슬라 자율주행 해외 기사" → {{"category":"AI/미래기술","region":"해외","days":7,"count":2}}
+"중동 분쟁 2개만" → {{"category":"글로벌 뉴스","region":"해외","days":7,"count":2}}
+"이번 주 코스피" → {{"category":"경제/증시","region":"한국","days":7,"count":3}}
+"AI 반도체 엔비디아" → {{"category":"AI/미래기술","region":"전체","days":7,"count":2}}
+"아파트 청약 경쟁률" → {{"category":"산업/부동산","region":"한국","days":7,"count":3}}
+"노벨상 과학" → {{"category":"과학/환경","region":"전체","days":14,"count":2}}
+
+현재 입력: "{user_input}"
+JSON:"""
+
+    try:
+        response = groq_client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=80,
+            stream=False,
+        )
+        raw = response.choices[0].message.content.strip()
+        if "</think>" in raw:
+            raw = raw.split("</think>")[-1].strip()
+        match = re.search(r'\{.*?\}', raw, re.DOTALL)
+        if match:
+            parsed = json.loads(match.group())
+            valid_categories = list(CATEGORY_KEYWORDS.keys())
+            if parsed.get("category") in valid_categories:
+                result["category"] = parsed["category"]
+            if parsed.get("region") in ["한국", "해외", "전체"]:
+                result["region"] = parsed["region"]
+            result["days"]  = max(1, min(14, int(parsed.get("days", result["days"]))))
+            result["count"] = max(1, min(5, int(parsed.get("count", result["count"]))))
+            if result["region"] in ["해외", "전체"]:
+                result["count"] = min(result["count"], 2)
+    except Exception:
+        pass
+    return result
+
+
+def run_news_from_chat(params: dict):
+    """파라미터로 뉴스 수집 후 채팅창에 바로 출력."""
+    cat         = params["category"]
+    cnt         = params["count"]
+    days        = params["days"]
+    region_mode = params["region"]
+
+    region_label = {"한국": "🇰🇷 한국", "해외": "🌐 해외", "전체": "🗺️ 전체"}[region_mode]
+    st.markdown(f"🔍 **[{cat}]** {region_label} 뉴스 {cnt}개를 찾고 있습니다... _(최근 {days}일)_")
+
+    news_data = fetch_news(cat, cnt, days, region_mode)
+    if not news_data:
+        st.warning("검색 결과가 없습니다.")
+        return "검색 결과가 없었습니다."
+
+    parts = []
+    for i, item in enumerate(news_data):
+        st.markdown(f"<div class='report-title'>— {i+1}. {item['title']}</div>", unsafe_allow_html=True)
+        if item["image"]: st.image(item["image"], width=700)
+        prompt = f"""아래 뉴스 기사를 분석하여 반드시 한국어로만 작성하세요.
+기사가 영어인 경우, 먼저 한국어로 완전히 번역한 뒤 분석을 진행하세요.
+
+[기사 정보]
+제목: {item['title']}
+내용: {item['summary']}
+
+[작성 형식]
+기본 내용: 이 기사의 전반적인 내용을 15~20문장으로 자연스럽고 풍부하게 서술하세요.
+핵심 요약: 이 기사의 핵심을 3~5문장으로 간결하게 요약
+심층 분석
+- 발생 배경: 이 사건/이슈가 왜 발생했는지
+- 전개 과정: 현재까지 어떻게 진행됐는지
+- 향후 전망: 앞으로 어떻게 될 것으로 예상되는지
+루키의 단어 사전
+- 용어1: 쉬운 설명
+- 용어2: 쉬운 설명
+주의사항: 반드시 한국어로만 작성, 외국어 절대 사용 금지, 대표님께 조언 금지"""
+        try:
+            analysis = stream_groq(prompt)
+        except Exception as e:
+            analysis = f"오류: {e}"; st.error(analysis)
+
+        # 단어 저장 UI (채팅 내에서도 동일하게)
+        key_suffix = f"chat_{i}_{hash(item['title'])}"
+        c1, c2, c3 = st.columns([2, 2, 1])
+        w = c1.text_input("단어", key=f"cw_{key_suffix}")
+        d = c2.text_input("정의", key=f"cd_{key_suffix}")
+        if c3.button("저장", key=f"cb_{key_suffix}") and w:
+            st.session_state.vocab_dict[w] = d; st.toast(f"'{w}' 저장 완료!")
+
+        st.markdown(f"[기사 원문]({item['link']}) · {item['source']} · {item['date']}")
+        st.markdown("---")
+        st.session_state.news_context += f"\n{analysis}"
+        parts.append(f"**{i+1}. {item['title']}**\n{analysis}")
+
+    return "\n\n".join(parts)
+
+
+if user_input := st.chat_input("루키에게 무엇이든 물어보세요 — 뉴스 요청도 가능해요"):
     st.session_state.messages.append({"role": "user", "content": user_input})
     with st.chat_message("user"): st.markdown(user_input)
+
     with st.chat_message("assistant", avatar=ROOKIE_IMG):
         try:
-            if st.session_state.news_context and not st.session_state.chat_history:
-                st.session_state.chat_history.append({"role": "user", "content": f"[참고 스크랩 내용]\n{st.session_state.news_context}\n\n위 내용을 참고하여 답변해 주세요."})
-                st.session_state.chat_history.append({"role": "assistant", "content": "네, 스크랩된 내용을 참고하여 답변드리겠습니다."})
-            res = stream_groq(user_input, history=st.session_state.chat_history)
-            st.session_state.chat_history.append({"role": "user", "content": user_input})
-            st.session_state.chat_history.append({"role": "assistant", "content": res})
+            # ── 1단계: 의도 분류 ──
+            intent = classify_intent(user_input)
+
+            if intent.get("is_news_request"):
+                # ── 2단계: 파라미터 추출 ──
+                params = extract_news_params(user_input)
+                # 뉴스 수집 및 출력
+                result = run_news_from_chat(params)
+                st.session_state.messages.append({"role": "assistant", "content": result})
+
+                # 채팅 히스토리에도 뉴스 결과 추가 (이후 질문에 참조 가능)
+                st.session_state.chat_history.append({"role": "user", "content": user_input})
+                st.session_state.chat_history.append({"role": "assistant", "content": f"[{params['category']}] 뉴스 {params['count']}개를 정리해 드렸습니다."})
+
+            else:
+                # ── 일반 채팅 응답 ──
+                if st.session_state.news_context and not st.session_state.chat_history:
+                    st.session_state.chat_history.append({"role": "user", "content": f"[참고 스크랩 내용]\n{st.session_state.news_context}\n\n위 내용을 참고하여 답변해 주세요."})
+                    st.session_state.chat_history.append({"role": "assistant", "content": "네, 스크랩된 내용을 참고하여 답변드리겠습니다."})
+
+                res = stream_groq(user_input, history=st.session_state.chat_history)
+                st.session_state.chat_history.append({"role": "user", "content": user_input})
+                st.session_state.chat_history.append({"role": "assistant", "content": res})
+                st.session_state.messages.append({"role": "assistant", "content": res})
+
+            # 히스토리 최대 20턴 유지
             if len(st.session_state.chat_history) > 20:
                 st.session_state.chat_history = st.session_state.chat_history[-20:]
-            st.session_state.messages.append({"role": "assistant", "content": res})
+
         except Exception as e:
             st.error(f"오류: {e}")
