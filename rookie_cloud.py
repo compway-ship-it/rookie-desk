@@ -322,7 +322,7 @@ with st.sidebar:
     except:
         pass
 
-    st.markdown("<h1>🐾 루키 비서실</h1>", unsafe_allow_html=True)
+    st.markdown("<h1>🐾 루키 비서실: 0차(비공개) 베타테스트</h1>", unsafe_allow_html=True)
     st.markdown("---")
 
     st.markdown("**📅 검색 기간**")
