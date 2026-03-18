@@ -499,6 +499,152 @@ p, li, label { color: var(--text2) !important; }
   .a-name { font-size: 1.1rem; }
   .hero-body { font-size: 0.85rem; }
 }
+
+/* ══ 애니메이션 ════════════════════════════════════════════ */
+
+/* 페이드인 + 위로 올라오기 */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+/* 페이드인만 */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+/* 왼쪽에서 슬라이드 */
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-18px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+/* 펄스 (로딩 스켈레톤) */
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+/* 채팅 메시지 등장 */
+div[data-testid="stChatMessage"] {
+  animation: fadeUp 0.35s ease both;
+}
+
+/* 탭 콘텐츠 전환 */
+div[data-testid="stTabsContent"] {
+  animation: fadeIn 0.3s ease both;
+}
+
+/* 버튼 — 클릭 시 눌리는 효과 */
+.stButton > button:active {
+  transform: translateY(1px) scale(0.98) !important;
+  box-shadow: none !important;
+}
+
+/* 카테고리 버튼 — 등장 애니메이션 */
+div[data-testid="stHorizontalBlock"] .stButton > button {
+  animation: fadeUp 0.3s ease both;
+}
+div[data-testid="stHorizontalBlock"] > div:nth-child(1) .stButton > button { animation-delay: 0.00s; }
+div[data-testid="stHorizontalBlock"] > div:nth-child(2) .stButton > button { animation-delay: 0.05s; }
+div[data-testid="stHorizontalBlock"] > div:nth-child(3) .stButton > button { animation-delay: 0.10s; }
+div[data-testid="stHorizontalBlock"] > div:nth-child(4) .stButton > button { animation-delay: 0.15s; }
+
+/* 사이드바 expander */
+[data-testid="stSidebar"] details {
+  transition: all 0.2s ease !important;
+}
+
+/* 스켈레톤 로딩 카드 */
+.skeleton-card {
+  background: linear-gradient(90deg, var(--bg3) 25%, rgba(255,255,255,0.04) 50%, var(--bg3) 75%);
+  background-size: 400px 100%;
+  animation: shimmer 1.4s infinite linear;
+  border-radius: 12px;
+  height: 64px;
+  margin-bottom: 12px;
+}
+
+/* 기사 체크박스 카드 */
+.news-card {
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 14px 18px;
+  margin-bottom: 10px;
+  transition: border-color 0.2s, background 0.2s, transform 0.15s;
+  animation: slideInLeft 0.3s ease both;
+}
+.news-card:hover {
+  border-color: var(--gold-border);
+  background: rgba(201,168,76,0.05);
+  transform: translateX(3px);
+}
+.news-card-title {
+  font-size: 0.92rem;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 5px;
+  line-height: 1.5;
+}
+.news-card-meta {
+  font-size: 0.76rem;
+  color: var(--text3);
+}
+.news-card-preview {
+  font-size: 0.82rem;
+  color: var(--text2);
+  margin-top: 6px;
+  line-height: 1.6;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 분석 진행 배지 */
+.progress-badge {
+  display: inline-block;
+  background: var(--gold-dim);
+  border: 1px solid var(--gold-border);
+  border-radius: 100px;
+  padding: 4px 14px;
+  font-size: 0.78rem;
+  color: var(--gold);
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  margin-bottom: 10px;
+  animation: fadeIn 0.2s ease;
+}
+
+/* report-title 등장 */
+.report-title {
+  animation: fadeUp 0.4s ease both;
+}
+
+/* 뒤로가기 버튼 강화 */
+.back-btn-wrap .stButton > button {
+  border-color: var(--gold-border) !important;
+  color: var(--gold) !important;
+  font-size: 0.85rem !important;
+  letter-spacing: 0.3px !important;
+}
+.back-btn-wrap .stButton > button:hover {
+  background: var(--gold-dim) !important;
+  transform: translateX(-3px) translateY(-1px) !important;
+}
+
+/* 잔여횟수 배너 등장 */
+.usage-banner { animation: fadeUp 0.4s ease both; }
+
+/* 프로그레스 바 */
+[data-testid="stProgressBar"] > div > div {
+  background: linear-gradient(90deg, var(--gold), var(--gold2)) !important;
+  border-radius: 100px !important;
+  transition: width 0.4s ease !important;
+}
+[data-testid="stProgressBar"] > div {
+  background: rgba(201,168,76,0.1) !important;
+  border-radius: 100px !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -1428,12 +1574,18 @@ JSON:"""
             st.caption(f"총 {len(filtered)}개 기사 수집 완료 (RSS + 검색 하이브리드 · 중복 필터 적용)")
             selected_flags = []
             for i, item in enumerate(filtered):
-                col_chk, col_info = st.columns([0.08, 0.92])
+                preview = item.get("summary", "")
+                preview = re.sub(r"<[^>]+>", "", preview).strip()
+                preview = preview[:120] + "..." if len(preview) > 120 else preview
+                col_chk, col_info = st.columns([0.06, 0.94])
                 chk = col_chk.checkbox("", value=True, key=f"sel_{i}_{item['title'][:10]}")
                 selected_flags.append(chk)
                 col_info.markdown(
-                    f"**{item['title']}**  \n"
-                    f"<span style='font-size:0.78rem;color:var(--text3);'>{item['source']} · {item['date']}</span>",
+                    f"""<div class='news-card' style='opacity:{"1" if chk else "0.45"}; animation-delay:{i*0.07}s'>
+  <div class='news-card-title'>{'✅ ' if chk else ''}{item['title']}</div>
+  <div class='news-card-meta'>{item['source']} · {item['date']}</div>
+  {f"<div class='news-card-preview'>{preview}</div>" if preview else ""}
+</div>""",
                     unsafe_allow_html=True
                 )
             if st.button("🔍 선택한 기사 심층 분석 시작", type="primary"):
@@ -1455,6 +1607,7 @@ JSON:"""
             total = len(news_to_analyze)
             parts = []
             for i, item in enumerate(news_to_analyze):
+                st.markdown(f"<div class='progress-badge'>📰 {i+1} / {total} 분석 중</div>", unsafe_allow_html=True)
                 st.markdown(f"<div class='report-title'>— {i+1}/{total}. {item['title']}</div>", unsafe_allow_html=True)
                 if item["image"]: st.image(item["image"], use_container_width=True)
 
@@ -1516,6 +1669,7 @@ JSON:"""
                     st.toast("이미 북마크된 기사입니다.")
 
         st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div class='back-btn-wrap'>", unsafe_allow_html=True)
         col_back, _ = st.columns([1, 3])
         if col_back.button("← 새 뉴스 검색", key="btn_back_to_search"):
             st.session_state.analyzed_results    = []
@@ -1524,6 +1678,7 @@ JSON:"""
             st.session_state.news_context        = ""
             st.session_state.show_category_ui    = True
             st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
 
 # ── 스마트 채팅: 의도 분류 + 파라미터 추출 파이프라인 ─────────
 def classify_intent(user_input: str) -> dict:
