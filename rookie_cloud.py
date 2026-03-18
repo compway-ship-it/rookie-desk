@@ -4,24 +4,7 @@ import streamlit.components.v1 as components
 from duckduckgo_search import DDGS
 from groq import Groq
 from supabase import create_client
-import os, base64, time, json, re, random
-from datetime import datetime, timezone, timedelta
-
-# ── 한국 시간 헬퍼 ─────────────────────────────────────────────
-_KST = timezone(timedelta(hours=9))
-def _kst_now() -> datetime:
-    return datetime.now(_KST)
-
-def _today_str() -> str:
-    """예: 2026년 3월 18일 (화요일)"""
-    d = _kst_now()
-    WEEKDAY_KR = ["월요일","화요일","수요일","목요일","금요일","토요일","일요일"]
-    return f"{d.year}년 {d.month}월 {d.day}일 ({WEEKDAY_KR[d.weekday()]})"
-
-def _today_search_str() -> str:
-    """검색 쿼리용: 예: 2026년 3월 18일"""
-    d = _kst_now()
-    return f"{d.year}년 {d.month}월 {d.day}일"
+import os, base64, time, json, re
 
 st.set_page_config(page_title="루키 비서실", layout="wide", page_icon="🐾")
 
@@ -566,62 +549,6 @@ def auth_login(code: str):
     except Exception:
         return None
 
-# ── 이용 횟수 제한 (성무진 제외) ─────────────────────────────
-UNLIMITED_USERS = {"ROOKIE-APFG13"}   # 무제한 허용 코드 목록
-DAILY_LIMIT_KR  = 5                   # 한국 뉴스 1회 분석 = 1카운트
-DAILY_LIMIT_OVERSEAS = 3              # 해외/전체 뉴스 1회 분석 = 1카운트
-
-def _usage_key(user_code: str) -> str:
-    """오늘 날짜 기반 Supabase 저장 키 — 예: usage_2026-03-18"""
-    return f"usage_{_kst_now().strftime('%Y-%m-%d')}"
-
-def db_get_usage(user_code: str) -> dict:
-    """오늘 사용 횟수 조회. {"kr": 0, "overseas": 0}"""
-    try:
-        key = _usage_key(user_code)
-        res = supabase.table("users").select(key).eq("code", user_code).execute()
-        if res.data and res.data[0].get(key):
-            return res.data[0][key]
-    except Exception:
-        pass
-    return {"kr": 0, "overseas": 0}
-
-def db_increment_usage(user_code: str, region_mode: str):
-    """분석 1회 완료 시 카운트 +1"""
-    try:
-        key   = _usage_key(user_code)
-        usage = db_get_usage(user_code)
-        if region_mode == "한국":
-            usage["kr"] = usage.get("kr", 0) + 1
-        else:
-            usage["overseas"] = usage.get("overseas", 0) + 1
-        supabase.table("users").update({key: usage}).eq("code", user_code).execute()
-    except Exception:
-        pass
-
-def check_usage_limit(user_code: str, region_mode: str) -> tuple[bool, str]:
-    """
-    (허용 여부, 안내 메시지) 반환.
-    무제한 코드면 항상 (True, "").
-    """
-    if user_code in UNLIMITED_USERS:
-        return True, ""
-    usage = db_get_usage(user_code)
-    if region_mode == "한국":
-        used  = usage.get("kr", 0)
-        limit = DAILY_LIMIT_KR
-        label = "한국 뉴스"
-    else:
-        used  = usage.get("overseas", 0)
-        limit = DAILY_LIMIT_OVERSEAS
-        label = "해외/전체 뉴스"
-    if used >= limit:
-        return False, (
-            f"오늘 **{label}** 분석 가능 횟수({limit}회)를 모두 사용했습니다. 🐾\n\n"
-            f"내일 자정(KST)에 횟수가 초기화됩니다."
-        )
-    return True, f"오늘 **{label}** 남은 횟수: {limit - used}회"
-
 # ── DB 헬퍼 함수 (user_code 기반 개인별 분리) ────────────────
 def db_load_vocab(user_code: str) -> dict:
     try:
@@ -684,7 +611,6 @@ if "pending_news" not in st.session_state: st.session_state.pending_news = []
 if "filtered_news_cache"  not in st.session_state: st.session_state.filtered_news_cache  = []
 if "analyzed_results"     not in st.session_state: st.session_state.analyzed_results     = []
 if "current_user" not in st.session_state: st.session_state.current_user = None
-if "show_category_ui"     not in st.session_state: st.session_state.show_category_ui     = True
 
 # ── URL 쿼리 파라미터로 로그인 유지 ──────────────────────────
 # ?code=ROOKIE-XXXXXX 가 URL에 있으면 자동 로그인
@@ -757,7 +683,7 @@ if st.session_state.current_user is None:
             if referral and not referral_ok:
                 st.error("올바르지 않은 개발자 코드입니다.")
             if referral_ok:
-                st.success("추천인 확인 완료! 이름을 입력해 주세요.")
+                st.success("개발자 코드 확인 완료! 이름을 입력해 주세요.")
 
             name_input = st.text_input(
                 "이름 (꼭 실명을 입력하세요!)",
@@ -831,29 +757,14 @@ CATEGORY_KEYWORDS_EN = {
 
 @st.cache_data(ttl=300)
 def fetch_news(category: str, count: int, days: int, region_mode: str = "한국") -> list:
-    time_limit  = f"d{days}"
-    today_label = _today_search_str()   # 예: "2026년 3월 18일"
-
-    # ── 키워드 샘플링 ────────────────────────────────────────────
-    # 전체 키워드 풀에서 매번 다른 조합을 뽑아 다양성 확보
-    # days=1(오늘)이면 날짜를 쿼리에 직접 붙여 최신성 강화
-    def _sample(pool: list, n: int = 4) -> list:
-        sampled = random.sample(pool, min(n, len(pool)))
-        if days <= 1:
-            # 오늘 날짜를 키워드에 붙여 당일 기사 우선 노출
-            sampled = [f"{q} {today_label}" for q in sampled]
-        return sampled
-
-    kr_queries = _sample(CATEGORY_KEYWORDS.get(category, [category]))
-    en_queries = _sample(CATEGORY_KEYWORDS_EN.get(category, [category]))
-
+    time_limit = f"d{days}"
     if region_mode == "한국":
-        search_plan = [("kr-kr", kr_queries)]
+        search_plan = [("kr-kr", CATEGORY_KEYWORDS.get(category, [category]))]
     elif region_mode == "해외":
-        search_plan = [("us-en", en_queries), ("en-ww", en_queries)]
+        en_q = CATEGORY_KEYWORDS_EN.get(category, [category])
+        search_plan = [("us-en", en_q), ("en-ww", en_q)]
     else:
-        search_plan = [("kr-kr", kr_queries), ("us-en", en_queries)]
-
+        search_plan = [("kr-kr", CATEGORY_KEYWORDS.get(category, [category])), ("us-en", CATEGORY_KEYWORDS_EN.get(category, [category]))]
     results = []; seen_titles = set()
     try:
         with DDGS() as ddgs:
@@ -863,14 +774,7 @@ def fetch_news(category: str, count: int, days: int, region_mode: str = "한국"
                         title = r.get("title", "")
                         if title and title not in seen_titles:
                             seen_titles.add(title)
-                            results.append({
-                                "source":  r.get("source", ""),
-                                "title":   title,
-                                "link":    r.get("url", ""),
-                                "summary": r.get("body", ""),
-                                "date":    r.get("date", "최근"),
-                                "image":   r.get("image"),
-                            })
+                            results.append({"source": r.get("source",""), "title": title, "link": r.get("url",""), "summary": r.get("body",""), "date": r.get("date","최근"), "image": r.get("image")})
                     if len(results) >= 30: break
                 if len(results) >= 30: break
     except Exception as e:
@@ -878,18 +782,7 @@ def fetch_news(category: str, count: int, days: int, region_mode: str = "한국"
     return results[:count]
 
 def stream_groq(prompt: str, history: list = None) -> str:
-    system_msg = {
-        "role": "system",
-        "content": (
-            f"당신은 한국어 전용 AI 비서 루키입니다. "
-            f"오늘은 {_today_str()}입니다. 한국 표준시(KST) 기준입니다. "
-            "날짜나 시점이 언급되면 이 날짜를 기준으로 판단하세요. "
-            "모든 답변은 100% 한국어로만 작성합니다. "
-            "영어, 중국어, 일본어 등 외국어 단어를 절대 사용하지 않습니다. "
-            "외래어가 필요하면 한국어로 풀어서 설명합니다. "
-            "이 규칙을 어기는 것은 절대 허용되지 않습니다."
-        )
-    }
+    system_msg = {"role": "system", "content": "당신은 한국어 전용 AI 비서 루키입니다. 모든 답변은 100% 한국어로만 작성합니다. 영어, 중국어, 일본어 등 외국어 단어를 절대 사용하지 않습니다. 외래어가 필요하면 한국어로 풀어서 설명합니다. 이 규칙을 어기는 것은 절대 허용되지 않습니다."}
     messages = [system_msg] + (history or []) + [{"role": "user", "content": prompt}]
     def _gen():
         stream = groq_client.chat.completions.create(model=MODEL_NAME, messages=messages, stream=True, max_tokens=3000)
@@ -903,7 +796,7 @@ def stream_groq(prompt: str, history: list = None) -> str:
                 in_think = False; buffer = buffer.split("</think>")[-1]
             if not in_think and "</think>" in buffer or not in_think and "<think>" not in buffer:
                 yield buffer; buffer = ""
-    return st.write_stream(_gen()) or ""
+    return st.write_stream(_gen())
 
 # ── 사이드바 ──────────────────────────────────────────────────
 with st.sidebar:
@@ -971,7 +864,7 @@ with st.sidebar:
 
 # ── 메인 ──────────────────────────────────────────────────────
 st.markdown("# 🐾 Rookie")
-tab1, tab2, tab3 = st.tabs(["우리는 이런걸 만듭니다", "📖 루키 사용법", "🐶 루키 비서실"])
+tab1, tab2 = st.tabs(["우리는 이런걸 만듭니다", "루키 비서실"])
 
 # ══════════════════════════════════════════════════════════════
 # TAB 1 — 서비스 소개
@@ -1014,7 +907,7 @@ with tab1:
 <div class='agent-grid'>
 
   <div class='a-card'>
-    <span class='a-icon'>🐱</span>
+    <img src='app/static/roobie.png' style='width:100%; border-radius:12px; margin-bottom:20px; object-fit:cover; max-height:200px;'>
     <div class='a-pill beta'>Beta 3</div>
     <div class='a-name'>루비</div>
     <div class='a-tagline'>수석 투자 비서</div>
@@ -1029,7 +922,7 @@ with tab1:
   </div>
 
   <div class='a-card'>
-    <span class='a-icon'>🦊</span>
+    <img src='app/static/roosie.png' style='width:100%; border-radius:12px; margin-bottom:20px; object-fit:cover; max-height:200px;'>
     <div class='a-pill beta'>Beta 4</div>
     <div class='a-name'>루시</div>
     <div class='a-tagline'>업무 전담 비서</div>
@@ -1044,7 +937,7 @@ with tab1:
   </div>
 
   <div class='a-card'>
-    <span class='a-icon'>🐶</span>
+    <img src='app/static/image_2fc863.jpg' style='width:100%; border-radius:12px; margin-bottom:20px; object-fit:cover; max-height:200px;'>
     <div class='a-pill soon'>0차 비공개 베타</div>
     <div class='a-name'>루키</div>
     <div class='a-tagline'>시사 전문 비서</div>
@@ -1082,118 +975,9 @@ with tab1:
 """, unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════
-# TAB 2 — 루키 사용법
+# TAB 2 — 뉴스 비서실
 # ══════════════════════════════════════════════════════════════
 with tab2:
-    st.markdown("""
-<div style='max-width:760px; margin:0 auto;'>
-
-<div style='text-align:center; padding:56px 0 40px;'>
-  <div style='font-size:3.2rem; margin-bottom:16px;'>🐶</div>
-  <div style='font-family:Playfair Display,serif; font-size:clamp(1.8rem,4vw,2.6rem); font-weight:900;
-              background:linear-gradient(135deg,#e8c76a,#c9a84c);
-              -webkit-background-clip:text; -webkit-text-fill-color:transparent;
-              margin-bottom:12px; letter-spacing:-0.5px;'>안녕하세요, 저는 루키예요!</div>
-  <div style='font-size:1rem; color:#9a9180; line-height:1.9; font-weight:300;'>
-    시사 뉴스 전담 AI 비서입니다.<br>
-    제가 무엇을 할 수 있는지, 어떻게 쓰시면 되는지 직접 안내해 드릴게요.
-  </div>
-</div>
-
-<div style='height:1px; background:linear-gradient(90deg,transparent,rgba(201,168,76,0.3),transparent); margin:8px 0 40px;'></div>
-
-<!-- 기능 소개 카드 1 -->
-<div style='background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); border-radius:16px; padding:28px 32px; margin-bottom:20px;'>
-  <div style='font-size:1.5rem; margin-bottom:10px;'>📰</div>
-  <div style='font-family:Playfair Display,serif; font-size:1.1rem; font-weight:700; color:#e8c76a; margin-bottom:10px;'>① 카테고리 버튼으로 뉴스 스크랩</div>
-  <div style='font-size:0.9rem; color:#9a9180; line-height:2.0;'>
-    <b style='color:#f0ece2;'>루키 비서실</b> 탭에 들어오면 처음에 8개 분야 버튼이 보여요.<br>
-    <span style='color:#c9a84c;'>경제/증시, AI/미래기술, 정치/외교, 산업/부동산, 글로벌 뉴스, 과학/환경, 사회/이슈, 문화/라이프</span><br><br>
-    원하는 분야를 누르면 제가 최신 기사를 자동으로 모아와요.<br>
-    그 다음엔 수집된 기사 목록이 나타나고, <b style='color:#f0ece2;'>심층 분석할 기사를 체크</b>한 뒤<br>
-    <b style='color:#c9a84c;'>「🔍 선택한 기사 심층 분석 시작」</b> 버튼을 눌러주세요.<br><br>
-    저는 각 기사마다 <b style='color:#f0ece2;'>기본 내용 → 핵심 요약 → 심층 분석 → 단어 사전</b> 순서로 분석해 드립니다.
-  </div>
-</div>
-
-<!-- 기능 소개 카드 2 -->
-<div style='background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); border-radius:16px; padding:28px 32px; margin-bottom:20px;'>
-  <div style='font-size:1.5rem; margin-bottom:10px;'>💬</div>
-  <div style='font-family:Playfair Display,serif; font-size:1.1rem; font-weight:700; color:#e8c76a; margin-bottom:10px;'>② 채팅창에서 자유롭게 요청하세요</div>
-  <div style='font-size:0.9rem; color:#9a9180; line-height:2.0;'>
-    버튼 없이도 아래 채팅창에 자유롭게 입력하면 돼요.<br>
-    뉴스 관련 요청이면 자동으로 뉴스 검색 모드로 전환되고,<br>
-    궁금한 점을 물어보면 일반 대화로 답해드려요.<br><br>
-    <b style='color:#c9a84c;'>이런 표현들을 쓰면 잘 알아들어요 👇</b><br>
-    <span style='background:rgba(201,168,76,0.08); border:1px solid rgba(201,168,76,0.2); border-radius:8px; padding:14px 18px; display:block; margin-top:10px; line-height:2.2; font-size:0.86rem; color:#c9a84c;'>
-      "오늘 반도체 뉴스 보여줘"<br>
-      "미국 금리 최신 소식 2개만"<br>
-      "이번 주 부동산 동향 알려줘"<br>
-      "AI 관련 해외 기사 찾아줘"<br>
-      "방금 본 기사에서 PER이 뭐야?" <span style='color:#5c5648;'>(← 일반 질문)</span>
-    </span>
-  </div>
-</div>
-
-<!-- 기능 소개 카드 3 -->
-<div style='background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); border-radius:16px; padding:28px 32px; margin-bottom:20px;'>
-  <div style='font-size:1.5rem; margin-bottom:10px;'>💎</div>
-  <div style='font-family:Playfair Display,serif; font-size:1.1rem; font-weight:700; color:#e8c76a; margin-bottom:10px;'>③ 단어 저장 — 지식 저장소</div>
-  <div style='font-size:0.9rem; color:#9a9180; line-height:2.0;'>
-    기사 분석이 끝난 뒤, 각 기사 아래에 <b style='color:#f0ece2;'>단어 입력창</b>이 나와요.<br>
-    생소한 용어나 기억하고 싶은 단어를 입력하고 <b style='color:#c9a84c;'>「저장」</b> 버튼을 누르면<br>
-    왼쪽 사이드바 <b style='color:#f0ece2;'>📒 지식 저장소</b>에 영구 보관돼요.<br><br>
-    저장된 단어는 언제든 수정하거나 삭제할 수 있어요.<br>
-    다음에 다시 로그인해도 그대로 남아 있으니 걱정 마세요!
-  </div>
-</div>
-
-<!-- 기능 소개 카드 4 -->
-<div style='background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); border-radius:16px; padding:28px 32px; margin-bottom:20px;'>
-  <div style='font-size:1.5rem; margin-bottom:10px;'>🔖</div>
-  <div style='font-family:Playfair Display,serif; font-size:1.1rem; font-weight:700; color:#e8c76a; margin-bottom:10px;'>④ 북마크 — 기사 저장</div>
-  <div style='font-size:0.9rem; color:#9a9180; line-height:2.0;'>
-    마음에 드는 기사는 <b style='color:#c9a84c;'>「🔖」 버튼</b>으로 저장할 수 있어요.<br>
-    저장된 기사는 왼쪽 사이드바 <b style='color:#f0ece2;'>🔖 북마크</b> 목록에서 확인하고<br>
-    언제든 원문 링크로 다시 읽을 수 있어요.<br>
-    같은 기사를 두 번 저장해도 중복 저장은 되지 않으니 안심하세요.
-  </div>
-</div>
-
-<!-- 기능 소개 카드 5 -->
-<div style='background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); border-radius:16px; padding:28px 32px; margin-bottom:20px;'>
-  <div style='font-size:1.5rem; margin-bottom:10px;'>⚙️</div>
-  <div style='font-family:Playfair Display,serif; font-size:1.1rem; font-weight:700; color:#e8c76a; margin-bottom:10px;'>⑤ 사이드바 설정 활용하기</div>
-  <div style='font-size:0.9rem; color:#9a9180; line-height:2.0;'>
-    왼쪽 사이드바에서 <b style='color:#c9a84c;'>📅 검색 기간</b> 슬라이더로 1~14일 사이로 조절할 수 있어요.<br>
-    "오늘 뉴스"만 보고 싶으면 1일, 최근 2주 동향이 궁금하면 14일로 설정하세요.<br><br>
-    뉴스 비서실 첫 화면에서는 <b style='color:#f0ece2;'>🇰🇷 한국 / 🌐 해외 / 🗺️ 전체</b> 중<br>
-    원하는 뉴스 수급 지역도 선택할 수 있어요.
-  </div>
-</div>
-
-<!-- 팁 박스 -->
-<div style='background:rgba(92,196,122,0.05); border:1px solid rgba(92,196,122,0.2); border-left:3px solid #5cc47a; border-radius:12px; padding:22px 26px; margin-bottom:20px;'>
-  <div style='font-size:0.88rem; font-weight:700; color:#5cc47a; margin-bottom:12px; letter-spacing:0.3px;'>🐾 루키의 TIP</div>
-  <div style='font-size:0.87rem; color:#9a9180; line-height:2.0;'>
-    • 분석 후 채팅창에서 <b style='color:#f0ece2;'>"이 기사에서 ~가 뭐야?"</b>처럼 물어보면 내용 기반으로 답해드려요.<br>
-    • 여러 기사를 한 번에 선택해서 분석하면 흐름을 한눈에 파악할 수 있어요.<br>
-    • <b style='color:#f0ece2;'>PC + 다크 모드</b> 환경에서 가장 예쁘게 보여요 🌙<br>
-    • 오류나 불편한 점은 <a href='mailto:compway@yu.ac.kr' style='color:#5cc47a;'>compway@yu.ac.kr</a>로 언제든 보내주세요.
-  </div>
-</div>
-
-<div style='text-align:center; padding:32px 0 48px; font-size:0.88rem; color:#5c5648;'>
-  준비되셨으면 위 <b style='color:#c9a84c;'>🐶 루키 비서실</b> 탭으로 이동해서 시작해보세요!
-</div>
-
-</div>
-""", unsafe_allow_html=True)
-
-# ══════════════════════════════════════════════════════════════
-# TAB 3 — 뉴스 비서실
-# ══════════════════════════════════════════════════════════════
-with tab3:
 
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"], avatar=ROOKIE_IMG if msg["role"] == "assistant" else None):
@@ -1217,42 +1001,13 @@ with tab3:
 오류·개선사항: <a href='mailto:compway@yu.ac.kr'>compway@yu.ac.kr</a><br><br>
 <span style='color:#5c5648; font-size:0.8rem;'>
 1차: 2026/03/17 22:40 · 2차(UI): 2026/03/17 23:25 · 3차(채팅 개선): 2026/03/18 07:23 · 4차(언어·지역 선택): 2026/03/18 11:32 · 5차(UI전면개편,로그인 기능, 북마크 저장기능의 일부): 2026/03/18 16:04<br>
-· 6차(데이터베이스 수정, 보안 로그 수정, 지식 저장소 기능의 일부, 새로고침 시 로그인 화면으로 넘어가는 버그 수정(보안 재검토 필요): 2026/03/18 16:11<br>
-· 7차(저장/북마크 None 버그 수정, 루키 사용법 탭 추가, 분석 완료 후 뒤로가기 버튼 추가): 2026/03/18<br>
-· 8차(KST 날짜 인식, system prompt 날짜 주입, 검색 키워드 랜덤 샘플링 + 당일 날짜 쿼리 강화): 2026/03/18<br>
-· 9차(뒤로가기 후 카테고리 UI 재표시 버그 수정, 이용 횟수 제한): 2026/03/18
+· 6차(데이터베이스 수정, 보안 로그 수정, 지식 저장소 기능의 일부, 새로고침 시 로그인 화면으로 넘어가는 버그 수정(보안 재검토 필요): 2026/03/18 16:11
 </span>
 </div>
 </div>
 """, unsafe_allow_html=True)
 
-    # ── 카테고리 선택 UI (첫 진입 또는 뒤로가기 후) ─────────────
-    if st.session_state.show_category_ui:
-        with st.chat_message("assistant", avatar=ROOKIE_IMG):
             st.markdown(f"안녕하십니까. 최근 **{days_range}일**간의 뉴스를 분석해 드립니다.")
-
-            # ── 잔여 횟수 안내 (무제한 유저 제외) ──────────────────
-            if user_code not in UNLIMITED_USERS:
-                usage   = db_get_usage(user_code)
-                kr_left = max(0, DAILY_LIMIT_KR - usage.get("kr", 0))
-                ov_left = max(0, DAILY_LIMIT_OVERSEAS - usage.get("overseas", 0))
-                if kr_left == 0 and ov_left == 0:
-                    st.markdown(f"""
-<div style='background:rgba(255,100,100,0.07); border:1px solid rgba(255,100,100,0.2);
-            border-left:3px solid #ff6464; border-radius:10px; padding:14px 18px;
-            font-size:0.88rem; color:#ff9a9a; line-height:1.9; margin-bottom:8px;'>
-  😴 &nbsp;오늘 스크랩 횟수를 모두 사용했어요.<br>
-  <span style='color:#5c5648; font-size:0.82rem;'>내일 자정(KST)에 횟수가 초기화됩니다.</span>
-</div>""", unsafe_allow_html=True)
-                else:
-                    st.markdown(f"""
-<div style='background:rgba(201,168,76,0.07); border:1px solid rgba(201,168,76,0.18);
-            border-left:3px solid var(--gold); border-radius:10px; padding:14px 18px;
-            font-size:0.88rem; color:#c9a84c; line-height:2.0; margin-bottom:8px;'>
-  🐾 &nbsp;오늘 만들 수 있는 스크랩이 &nbsp;<b style='color:#e8c76a; font-size:1rem;'>한국 {kr_left}개 · 해외 {ov_left}개</b>&nbsp; 남았어요.<br>
-  <span style='color:#5c5648; font-size:0.8rem;'>한국 뉴스 최대 {DAILY_LIMIT_KR}회 · 해외/전체 최대 {DAILY_LIMIT_OVERSEAS}회 / 매일 자정 초기화</span>
-</div>""", unsafe_allow_html=True)
-
             st.markdown("**🌍 뉴스 수급 지역**")
             region_choice = st.radio("", options=["🇰🇷 한국 신문", "🌐 해외 신문", "🗺️ 전체 (한국 + 해외)"], horizontal=True, label_visibility="collapsed")
             region_map_ui = {"🇰🇷 한국 신문": "한국", "🌐 해외 신문": "해외", "🗺️ 전체 (한국 + 해외)": "전체"}
@@ -1287,8 +1042,6 @@ with tab3:
             for row in [cats[i:i+4] for i in range(0, len(cats), 4)]:
                 for col, cat in zip(st.columns(4), row):
                     if col.button(cat):
-                        st.session_state.show_category_ui  = False
-                        st.session_state._last_region_mode = selected_region
                         st.session_state.update(selected_category=cat, selected_count=count, selected_region=selected_region)
                         st.session_state.messages.append({"role": "user", "content": f"[{cat}] 최근 {days_range}일 {region_choice} 뉴스 {count}개 스크랩"})
                         st.rerun()
@@ -1297,52 +1050,41 @@ with tab3:
         cat = st.session_state.pop("selected_category")
         cnt = st.session_state.pop("selected_count")
         region_mode = st.session_state.pop("selected_region", "한국")
+        with st.chat_message("assistant", avatar=ROOKIE_IMG):
+            loading_placeholder = st.empty()
+            loading_placeholder.markdown(f"🔍 **[{cat}]** 뉴스를 수집하고 품질을 확인하는 중...")
+            raw_news = fetch_news(cat, cnt * 3, days_range, region_mode)
+            loading_placeholder.empty()
 
-        # ── 이용 횟수 사전 체크 ────────────────────────────────────
-        allowed, msg = check_usage_limit(user_code, region_mode)
-        if not allowed:
-            with st.chat_message("assistant", avatar=ROOKIE_IMG):
-                st.warning(msg)
-            st.session_state.show_category_ui = True
-        else:
-            if msg:
-                st.info(msg)   # 남은 횟수 안내
-
-            with st.chat_message("assistant", avatar=ROOKIE_IMG):
-                loading_placeholder = st.empty()
-                loading_placeholder.markdown(f"🔍 **[{cat}]** 뉴스를 수집하고 품질을 확인하는 중...")
-                raw_news = fetch_news(cat, cnt * 3, days_range, region_mode)
-                loading_placeholder.empty()
-
-                if not raw_news:
-                    st.warning("검색 결과가 없습니다. 다른 분야를 선택해 주세요.")
-                else:
-                    # ── ① 품질 필터링 ──────────────────────────────────
-                    titles_text = "\n".join([f"{i+1}. {r['title']}" for i, r in enumerate(raw_news)])
-                    filter_prompt = f"""아래 뉴스 제목 목록에서 다음 기준으로 상위 {cnt}개를 선택하세요.
+            if not raw_news:
+                st.warning("검색 결과가 없습니다. 다른 분야를 선택해 주세요.")
+            else:
+                # ── ① 품질 필터링 ──────────────────────────────────
+                titles_text = "\n".join([f"{i+1}. {r['title']}" for i, r in enumerate(raw_news)])
+                filter_prompt = f"""아래 뉴스 제목 목록에서 다음 기준으로 상위 {cnt}개를 선택하세요.
 기준: 중복 사건 제거(같은 사건은 1개만), 낚시성·광고성 제거, 다양한 주제 포함
 뉴스 목록:\n{titles_text}
 선택한 기사 번호만 JSON 배열로 응답. 예시: [1, 3, 5]
 JSON:"""
-                    selected_indices = list(range(min(cnt, len(raw_news))))
-                    try:
-                        resp = groq_client.chat.completions.create(
-                            model=MODEL_NAME,
-                            messages=[{"role": "user", "content": filter_prompt}],
-                            max_tokens=60, stream=False
-                        )
-                        raw_r = resp.choices[0].message.content.strip()
-                        if "</think>" in raw_r: raw_r = raw_r.split("</think>")[-1].strip()
-                        arr_match = re.search(r'\[.*?\]', raw_r, re.DOTALL)
-                        if arr_match:
-                            parsed = json.loads(arr_match.group())
-                            selected_indices = [int(x)-1 for x in parsed if 0 < int(x) <= len(raw_news)][:cnt]
-                    except Exception:
-                        pass
+                selected_indices = list(range(min(cnt, len(raw_news))))
+                try:
+                    resp = groq_client.chat.completions.create(
+                        model=MODEL_NAME,
+                        messages=[{"role": "user", "content": filter_prompt}],
+                        max_tokens=60, stream=False
+                    )
+                    raw_r = resp.choices[0].message.content.strip()
+                    if "</think>" in raw_r: raw_r = raw_r.split("</think>")[-1].strip()
+                    arr_match = re.search(r'\[.*?\]', raw_r, re.DOTALL)
+                    if arr_match:
+                        parsed = json.loads(arr_match.group())
+                        selected_indices = [int(x)-1 for x in parsed if 0 < int(x) <= len(raw_news)][:cnt]
+                except Exception:
+                    pass
 
-                    filtered = [raw_news[i] for i in selected_indices if i < len(raw_news)]
-                    # ★ session_state에 저장 → 체크박스 클릭 시 리런해도 유지됨
-                    st.session_state.filtered_news_cache = filtered
+                filtered = [raw_news[i] for i in selected_indices if i < len(raw_news)]
+                # ★ session_state에 저장 → 체크박스 클릭 시 리런해도 유지됨
+                st.session_state.filtered_news_cache = filtered
 
     # ── ③ 헤드라인 카드 + 체크박스 ────────────────────────────────
     # selected_category 블록과 분리 → 체크박스 변경 시 리런해도 이 블록만 재렌더링
@@ -1368,8 +1110,7 @@ JSON:"""
                 if not chosen:
                     st.warning("최소 1개 이상 선택해 주세요.")
                 else:
-                    st.session_state.pending_news   = chosen
-                    st.session_state.pending_region = st.session_state.get("_last_region_mode", "한국")
+                    st.session_state.pending_news = chosen
                     st.session_state.filtered_news_cache = []  # 카드 제거
                     st.rerun()
 
@@ -1410,7 +1151,7 @@ JSON:"""
                     analysis = f"오류: {e}"; st.error(analysis)
 
                 # ★ 분석 결과 캐시 저장
-                st.session_state.analyzed_results.append({"item": item, "analysis": analysis or ""})
+                st.session_state.analyzed_results.append({"item": item, "analysis": analysis})
 
                 st.markdown(f"[기사 원문]({item['link']}) · {item['source']} · {item['date']}")
                 st.markdown("---")
@@ -1418,9 +1159,6 @@ JSON:"""
                 parts.append(f"**{i+1}. {item['title']}**\n{analysis}")
 
             st.session_state.messages.append({"role": "assistant", "content": "\n\n".join(parts)})
-            # ── 이용 횟수 +1 ──────────────────────────────────────
-            _region_used = st.session_state.pop("pending_region", "한국")
-            db_increment_usage(user_code, _region_used)
 
     # ── 분석 완료 후 저장/북마크 UI (session_state 기반으로 항상 렌더링) ──
     if st.session_state.get("analyzed_results"):
@@ -1439,24 +1177,13 @@ JSON:"""
                 saved = db_save_bookmark(uc, {
                     "title": item["title"], "link": item["link"],
                     "source": item["source"], "date": item["date"],
-                    "summary": (analysis or "")[:300]
+                    "summary": analysis[:300]
                 })
                 if saved:
                     st.session_state.bookmarks = db_load_bookmarks(uc)
                     st.toast("🔖 북마크 저장!")
                 else:
                     st.toast("이미 북마크된 기사입니다.")
-
-        # ── 뒤로가기 버튼 ──────────────────────────────────────────
-        st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
-        col_back, col_spacer = st.columns([1, 3])
-        if col_back.button("← 새 뉴스 검색", key="btn_back_to_search"):
-            st.session_state.analyzed_results    = []
-            st.session_state.filtered_news_cache = []
-            st.session_state.pending_news        = []
-            st.session_state.news_context        = ""
-            st.session_state.show_category_ui    = True
-            st.rerun()
 
 # ── 스마트 채팅: 의도 분류 + 파라미터 추출 파이프라인 ─────────
 def classify_intent(user_input: str) -> dict:
@@ -1764,7 +1491,7 @@ def run_news_from_chat(params: dict):
             saved = db_save_bookmark(user_code, {
                 "title": item["title"], "link": item["link"],
                 "source": item["source"], "date": item["date"],
-                "summary": (analysis or "")[:300]
+                "summary": analysis[:300]
             })
             if saved:
                 st.session_state.bookmarks = db_load_bookmarks(user_code)
