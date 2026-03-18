@@ -4,7 +4,24 @@ import streamlit.components.v1 as components
 from duckduckgo_search import DDGS
 from groq import Groq
 from supabase import create_client
-import os, base64, time, json, re
+import os, base64, time, json, re, random
+from datetime import datetime, timezone, timedelta
+
+# ── 한국 시간 헬퍼 ─────────────────────────────────────────────
+_KST = timezone(timedelta(hours=9))
+def _kst_now() -> datetime:
+    return datetime.now(_KST)
+
+def _today_str() -> str:
+    """예: 2026년 3월 18일 (화요일)"""
+    d = _kst_now()
+    WEEKDAY_KR = ["월요일","화요일","수요일","목요일","금요일","토요일","일요일"]
+    return f"{d.year}년 {d.month}월 {d.day}일 ({WEEKDAY_KR[d.weekday()]})"
+
+def _today_search_str() -> str:
+    """검색 쿼리용: 예: 2026년 3월 18일"""
+    d = _kst_now()
+    return f"{d.year}년 {d.month}월 {d.day}일"
 
 st.set_page_config(page_title="루키 비서실", layout="wide", page_icon="🐾")
 
@@ -757,14 +774,29 @@ CATEGORY_KEYWORDS_EN = {
 
 @st.cache_data(ttl=300)
 def fetch_news(category: str, count: int, days: int, region_mode: str = "한국") -> list:
-    time_limit = f"d{days}"
+    time_limit  = f"d{days}"
+    today_label = _today_search_str()   # 예: "2026년 3월 18일"
+
+    # ── 키워드 샘플링 ────────────────────────────────────────────
+    # 전체 키워드 풀에서 매번 다른 조합을 뽑아 다양성 확보
+    # days=1(오늘)이면 날짜를 쿼리에 직접 붙여 최신성 강화
+    def _sample(pool: list, n: int = 4) -> list:
+        sampled = random.sample(pool, min(n, len(pool)))
+        if days <= 1:
+            # 오늘 날짜를 키워드에 붙여 당일 기사 우선 노출
+            sampled = [f"{q} {today_label}" for q in sampled]
+        return sampled
+
+    kr_queries = _sample(CATEGORY_KEYWORDS.get(category, [category]))
+    en_queries = _sample(CATEGORY_KEYWORDS_EN.get(category, [category]))
+
     if region_mode == "한국":
-        search_plan = [("kr-kr", CATEGORY_KEYWORDS.get(category, [category]))]
+        search_plan = [("kr-kr", kr_queries)]
     elif region_mode == "해외":
-        en_q = CATEGORY_KEYWORDS_EN.get(category, [category])
-        search_plan = [("us-en", en_q), ("en-ww", en_q)]
+        search_plan = [("us-en", en_queries), ("en-ww", en_queries)]
     else:
-        search_plan = [("kr-kr", CATEGORY_KEYWORDS.get(category, [category])), ("us-en", CATEGORY_KEYWORDS_EN.get(category, [category]))]
+        search_plan = [("kr-kr", kr_queries), ("us-en", en_queries)]
+
     results = []; seen_titles = set()
     try:
         with DDGS() as ddgs:
@@ -774,7 +806,14 @@ def fetch_news(category: str, count: int, days: int, region_mode: str = "한국"
                         title = r.get("title", "")
                         if title and title not in seen_titles:
                             seen_titles.add(title)
-                            results.append({"source": r.get("source",""), "title": title, "link": r.get("url",""), "summary": r.get("body",""), "date": r.get("date","최근"), "image": r.get("image")})
+                            results.append({
+                                "source":  r.get("source", ""),
+                                "title":   title,
+                                "link":    r.get("url", ""),
+                                "summary": r.get("body", ""),
+                                "date":    r.get("date", "최근"),
+                                "image":   r.get("image"),
+                            })
                     if len(results) >= 30: break
                 if len(results) >= 30: break
     except Exception as e:
@@ -782,7 +821,18 @@ def fetch_news(category: str, count: int, days: int, region_mode: str = "한국"
     return results[:count]
 
 def stream_groq(prompt: str, history: list = None) -> str:
-    system_msg = {"role": "system", "content": "당신은 한국어 전용 AI 비서 루키입니다. 모든 답변은 100% 한국어로만 작성합니다. 영어, 중국어, 일본어 등 외국어 단어를 절대 사용하지 않습니다. 외래어가 필요하면 한국어로 풀어서 설명합니다. 이 규칙을 어기는 것은 절대 허용되지 않습니다."}
+    system_msg = {
+        "role": "system",
+        "content": (
+            f"당신은 한국어 전용 AI 비서 루키입니다. "
+            f"오늘은 {_today_str()}입니다. 한국 표준시(KST) 기준입니다. "
+            "날짜나 시점이 언급되면 이 날짜를 기준으로 판단하세요. "
+            "모든 답변은 100% 한국어로만 작성합니다. "
+            "영어, 중국어, 일본어 등 외국어 단어를 절대 사용하지 않습니다. "
+            "외래어가 필요하면 한국어로 풀어서 설명합니다. "
+            "이 규칙을 어기는 것은 절대 허용되지 않습니다."
+        )
+    }
     messages = [system_msg] + (history or []) + [{"role": "user", "content": prompt}]
     def _gen():
         stream = groq_client.chat.completions.create(model=MODEL_NAME, messages=messages, stream=True, max_tokens=3000)
@@ -1111,7 +1161,8 @@ with tab3:
 <span style='color:#5c5648; font-size:0.8rem;'>
 1차: 2026/03/17 22:40 · 2차(UI): 2026/03/17 23:25 · 3차(채팅 개선): 2026/03/18 07:23 · 4차(언어·지역 선택): 2026/03/18 11:32 · 5차(UI전면개편,로그인 기능, 북마크 저장기능의 일부): 2026/03/18 16:04<br>
 · 6차(데이터베이스 수정, 보안 로그 수정, 지식 저장소 기능의 일부, 새로고침 시 로그인 화면으로 넘어가는 버그 수정(보안 재검토 필요): 2026/03/18 16:11<br>
-· 7차(저장/북마크 None 버그 수정, 루키 사용법 탭 추가, 분석 완료 후 뒤로가기 버튼 추가): 2026/03/18
+· 7차(저장/북마크 None 버그 수정, 루키 사용법 탭 추가, 분석 완료 후 뒤로가기 버튼 추가): 2026/03/18<br>
+· 8차(KST 날짜 인식, system prompt 날짜 주입, 검색 키워드 랜덤 샘플링 + 당일 날짜 쿼리 강화): 2026/03/18
 </span>
 </div>
 </div>
