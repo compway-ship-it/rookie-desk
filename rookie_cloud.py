@@ -3,7 +3,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 from duckduckgo_search import DDGS
 from groq import Groq
-from supabase import create_client, Client
+from supabase import create_client
 import os, base64, time, json, re
 
 st.set_page_config(page_title="루키 비서실", layout="wide", page_icon="🐾")
@@ -497,7 +497,7 @@ except Exception:
 
 # ── Supabase 클라이언트 ───────────────────────────────────────
 @st.cache_resource
-def get_supabase() -> Client:
+def get_supabase():
     return create_client(
         st.secrets["SUPABASE_URL"],
         st.secrets["SUPABASE_KEY"]
@@ -531,7 +531,7 @@ def auth_check_capacity() -> bool:
     except Exception:
         return False
 
-def auth_register(name: str) -> dict | None:
+def auth_register(name: str):
     """신규 회원 등록 → {code, name} 반환"""
     try:
         code = auth_generate_code()
@@ -540,7 +540,7 @@ def auth_register(name: str) -> dict | None:
     except Exception:
         return None
 
-def auth_login(code: str) -> dict | None:
+def auth_login(code: str):
     """기등록 유저 로그인"""
     try:
         res = supabase.table("users").select("code, name").eq("code", code.strip().upper()).execute()
