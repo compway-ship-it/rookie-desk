@@ -359,31 +359,6 @@ with st.sidebar:
         st.caption("저장된 단어가 없습니다.")
 
     st.markdown("---")
-
-    # ── 개발노트 (크고 눈에 띄게) ──
-    st.markdown("""
-<div class='notice-box'>
-<div class='notice-title'>📋 개발 노트</div>
-<div style='font-size:0.88rem; line-height:2.0; color:#c8bfa8; padding: 4px 0;'>
-ⓐ 현재 이 AI Rookie는 우리가 개발중인 모델의 일부를 떼어낸 것에 불과하며, 완전히 구현되지 않았으므로 오류가 많습니다.<br><br>
-ⓑ 현재 구현되지 않는 기능은 지식저장소, 1:1 채팅 기능의 부자연스러움, 단어저장이 대표적입니다.<br><br>
-ⓒ 현재 사용자께서 보시는 환경은 <b style='color:#f5c842;'>'신문 및 시사 뉴스 스크랩 기능'</b> 용도로 만들어진 것입니다.<br><br>
-ⓓ 개발 시작일이 3월 초순인 만큼, 실시간으로 업데이트가 되고 있다는 점을 양해 바랍니다.<br><br>
-ⓔ 현재 1:1 대화 및 신문 및 스크랩 생성에 다수의 사용자가 사용 시 생성 제한 및 오류가 발생할 수 있습니다.<br><br>
-ⓕ 현재 클라우드 서버를 이용중이므로 배포에 불완전성이 우려됩니다.<br><br>
-ⓖ PC 환경 사용을 권장합니다.<br><br>
-<span style='color:#f5a623; font-weight:600;'>이 외 오류 및 개선사항이 있다면</span><br>
-<a href='mailto:compway@yu.ac.kr'>compway@yu.ac.kr</a> 로 메일 전송해 주시면 적극 반영토록 하겠습니다.<br><br>
-<span style='color:#f5c842; font-weight:700;'>— 개발자 —</span><br>
-성무진, 강연화, 박현수 드림<br><br>
-<span style='color:#666; font-size:0.78rem;'>1차 업데이트: 2026/03/17 오후 10:40<br>
-2차 업데이트(디자인 및 UI수정): 2026/03/17 오후 11:25</span><br><br>
-오른쪽 위 <b>Dark모드</b> 사용을 권장합니다.
-</div>
-</div>
-""", unsafe_allow_html=True)
-
-    st.markdown("---")
     if st.button("🔄 대화 초기화"):
         st.session_state.update(messages=[], vocab_dict={}, news_context="", chat_history=[])
         st.rerun()
@@ -397,6 +372,30 @@ for msg in st.session_state.messages:
 
 if not st.session_state.messages:
     with st.chat_message("assistant", avatar=ROOKIE_IMG):
+
+        # ── 개발노트 (메인 화면 중앙, 카테고리 버튼 위) ──
+        st.markdown("""
+<div class='notice-box'>
+<div class='notice-title'>📋 개발 노트</div>
+<div style='font-size:0.92rem; line-height:2.0; color:#c8bfa8; padding: 4px 0;'>
+ⓐ 현재 이 AI Rookie는 우리가 개발중인 모델의 일부를 떼어낸 것에 불과하며, 완전히 구현되지 않았으므로 오류가 많습니다.<br><br>
+ⓑ 현재 구현되지 않는 기능은 지식저장소, 1:1 채팅 기능의 부자연스러움, 단어저장이 대표적입니다.<br><br>
+ⓒ 현재 사용자께서 보시는 환경은 <b style='color:#f5c842;'>'신문 및 시사 뉴스 스크랩 기능'</b> 용도로 만들어진 것입니다.<br><br>
+ⓓ 개발 시작일이 3월 초순인 만큼, 실시간으로 업데이트가 되고 있다는 점을 양해 바랍니다.<br><br>
+ⓔ 현재 1:1 대화 및 신문 및 스크랩 생성에 다수의 사용자가 사용 시 생성 제한 및 오류가 발생할 수 있습니다.<br><br>
+ⓕ 현재 클라우드 서버를 이용중이므로 배포에 불완전성이 우려됩니다.<br><br>
+ⓖ PC 환경 사용을 권장합니다.<br><br>
+<span style='color:#f5a623; font-weight:600;'>이 외 오류 및 개선사항이 있다면</span><br>
+<a href='mailto:compway@yu.ac.kr' style='color:#f5c842;'>compway@yu.ac.kr</a> 로 메일 전송해 주시면 적극 반영토록 하겠습니다.<br><br>
+<span style='color:#f5c842; font-weight:700;'>— 개발자 —</span><br>
+성무진, 강연화, 박현수 드림<br><br>
+<span style='color:#666; font-size:0.82rem;'>1차 업데이트: 2026/03/17 오후 10:40<br>
+2차 업데이트(디자인 및 UI수정): 2026/03/17 오후 11:25</span><br><br>
+오른쪽 위 <b>Dark모드</b> 사용을 권장합니다.
+</div>
+</div>
+""", unsafe_allow_html=True)
+
         st.markdown(f"안녕하십니까! **최근 {days_range}일**간의 뉴스를 분석해 드리겠습니다. 아래에서 분야를 선택해 주세요 🐾")
         count = st.select_slider("조사할 기사 개수", options=[1, 2, 3, 4, 5], value=3)
 
