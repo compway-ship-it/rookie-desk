@@ -5,6 +5,7 @@ from duckduckgo_search import DDGS
 from groq import Groq
 from supabase import create_client
 import os, base64, time, json, re
+from streamlit_cookies_controller import CookieController
 
 st.set_page_config(page_title="루키 비서실", layout="wide", page_icon="🐾")
 
@@ -608,8 +609,21 @@ if "messages"     not in st.session_state: st.session_state.messages     = []
 if "chat_history" not in st.session_state: st.session_state.chat_history = []
 if "news_context" not in st.session_state: st.session_state.news_context = ""
 if "pending_news" not in st.session_state: st.session_state.pending_news = []
-if "filtered_news_cache" not in st.session_state: st.session_state.filtered_news_cache = []
-if "current_user" not in st.session_state: st.session_state.current_user = None  # {code, name}
+if "filtered_news_cache"  not in st.session_state: st.session_state.filtered_news_cache  = []
+if "analyzed_results"     not in st.session_state: st.session_state.analyzed_results     = []
+if "current_user" not in st.session_state: st.session_state.current_user = None
+
+# ── 쿠키로 로그인 유지 ────────────────────────────────────────
+cookie = CookieController()
+
+if st.session_state.current_user is None:
+    saved_code = cookie.get("rookie_user_code")
+    if saved_code:
+        user = auth_login(saved_code)
+        if user:
+            st.session_state.current_user = user
+            st.session_state.vocab_dict  = db_load_vocab(user["code"])
+            st.session_state.bookmarks   = db_load_bookmarks(user["code"])
 
 # ── 로그인 / 회원가입 화면 ────────────────────────────────────
 if st.session_state.current_user is None:
@@ -651,6 +665,7 @@ if st.session_state.current_user is None:
                         st.session_state.current_user = user
                         st.session_state.vocab_dict   = db_load_vocab(user["code"])
                         st.session_state.bookmarks    = db_load_bookmarks(user["code"])
+                        cookie.set("rookie_user_code", user["code"], max_age=30*24*3600)  # 30일 유지
                         st.rerun()
                     else:
                         st.error("등록된 코드가 아닙니다. 첫 방문이라면 회원가입 탭을 이용해 주세요.")
@@ -691,7 +706,8 @@ if st.session_state.current_user is None:
                         st.session_state.current_user = user
                         st.session_state.vocab_dict   = {}
                         st.session_state.bookmarks    = []
-                        st.session_state.new_code     = user["code"]  # ★ 코드 보존
+                        st.session_state.new_code     = user["code"]
+                        cookie.set("rookie_user_code", user["code"], max_age=30*24*3600)  # 30일 유지
                         st.rerun()
                     else:
                         st.error("등록 중 오류가 발생했습니다. 다시 시도해 주세요.")
@@ -838,10 +854,11 @@ with st.sidebar:
         st.session_state.update(
             messages=[], news_context="",
             chat_history=[], pending_news=[],
-            filtered_news_cache=[]
+            filtered_news_cache=[], analyzed_results=[]
         )
         st.rerun()
     if col_logout.button("🚪 로그아웃"):
+        cookie.remove("rookie_user_code")
         for key in list(st.session_state.keys()):
             del st.session_state[key]
         st.rerun()
@@ -1100,7 +1117,7 @@ JSON:"""
     if st.session_state.pending_news:
         news_to_analyze = st.session_state.pending_news
         st.session_state.pending_news = []
-        meta = st.session_state.pop("pending_meta", {})
+        st.session_state.analyzed_results = []  # 분석 결과 캐시 초기화
 
         with st.chat_message("assistant", avatar=ROOKIE_IMG):
             parts = []
@@ -1132,25 +1149,8 @@ JSON:"""
                 except Exception as e:
                     analysis = f"오류: {e}"; st.error(analysis)
 
-                # ── ② 북마크 버튼 + 단어 저장 ──
-                act1, act2, act3, act4 = st.columns([2, 2, 1, 1])
-                w = act1.text_input("단어", key=f"w_{i}")
-                d = act2.text_input("정의", key=f"d_{i}")
-                if act3.button("저장", key=f"b_{i}") and w:
-                    st.session_state.vocab_dict[w] = d
-                    db_save_vocab(user_code, w, d)
-                    st.toast(f"'{w}' 저장 완료!")
-                if act4.button("🔖", key=f"bm_{i}", help="북마크에 저장"):
-                    saved = db_save_bookmark(user_code, {
-                        "title": item["title"], "link": item["link"],
-                        "source": item["source"], "date": item["date"],
-                        "summary": analysis[:300]
-                    })
-                    if saved:
-                        st.session_state.bookmarks = db_load_bookmarks(user_code)
-                        st.toast("🔖 북마크 저장!")
-                    else:
-                        st.toast("이미 북마크된 기사입니다.")
+                # ★ 분석 결과 캐시 저장
+                st.session_state.analyzed_results.append({"item": item, "analysis": analysis})
 
                 st.markdown(f"[기사 원문]({item['link']}) · {item['source']} · {item['date']}")
                 st.markdown("---")
@@ -1158,6 +1158,31 @@ JSON:"""
                 parts.append(f"**{i+1}. {item['title']}**\n{analysis}")
 
             st.session_state.messages.append({"role": "assistant", "content": "\n\n".join(parts)})
+
+    # ── 분석 완료 후 저장/북마크 UI (session_state 기반으로 항상 렌더링) ──
+    if st.session_state.get("analyzed_results"):
+        for i, result in enumerate(st.session_state.analyzed_results):
+            item     = result["item"]
+            analysis = result["analysis"]
+            act1, act2, act3, act4 = st.columns([2, 2, 1, 1])
+            w = act1.text_input("단어", key=f"w_{i}_r")
+            d = act2.text_input("정의", key=f"d_{i}_r")
+            if act3.button("저장", key=f"b_{i}_r") and w:
+                st.session_state.vocab_dict[w] = d
+                db_save_vocab(st.session_state.current_user["code"], w, d)
+                st.toast(f"'{w}' 저장 완료!")
+            if act4.button("🔖", key=f"bm_{i}_r", help="북마크에 저장"):
+                uc = st.session_state.current_user["code"]
+                saved = db_save_bookmark(uc, {
+                    "title": item["title"], "link": item["link"],
+                    "source": item["source"], "date": item["date"],
+                    "summary": analysis[:300]
+                })
+                if saved:
+                    st.session_state.bookmarks = db_load_bookmarks(uc)
+                    st.toast("🔖 북마크 저장!")
+                else:
+                    st.toast("이미 북마크된 기사입니다.")
 
 # ── 스마트 채팅: 의도 분류 + 파라미터 추출 파이프라인 ─────────
 def classify_intent(user_input: str) -> dict:
