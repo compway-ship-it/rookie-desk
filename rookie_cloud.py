@@ -498,8 +498,9 @@ if "messages"     not in st.session_state: st.session_state.messages     = []
 if "chat_history" not in st.session_state: st.session_state.chat_history = []
 if "news_context" not in st.session_state: st.session_state.news_context = ""
 if "vocab_dict"   not in st.session_state: st.session_state.vocab_dict   = {}
-if "bookmarks"    not in st.session_state: st.session_state.bookmarks    = []   # ② 북마크
-if "pending_news" not in st.session_state: st.session_state.pending_news = []   # ③ 선택형 분석
+if "bookmarks"    not in st.session_state: st.session_state.bookmarks    = []
+if "pending_news" not in st.session_state: st.session_state.pending_news = []
+if "filtered_news_cache" not in st.session_state: st.session_state.filtered_news_cache = []
 
 CATEGORY_KEYWORDS = {
     "경제/증시":   ["국내 증시 전망","금리 환율 동향","코스피 코스닥 시황","주요 기업 실적","한국은행 기준금리","원달러 환율","코스피 급등 급락","기업 IPO 상장","주식 투자 트렌드","채권 금융시장","무역수지 경상수지","소비자물가 인플레이션","기업 인수합병 M&A","벤처 투자 VC","외국인 기관 매매동향"],
@@ -603,7 +604,8 @@ with st.sidebar:
     if st.button("🔄 대화 초기화"):
         st.session_state.update(
             messages=[], vocab_dict={}, news_context="",
-            chat_history=[], bookmarks=[], pending_news=[]
+            chat_history=[], bookmarks=[], pending_news=[],
+            filtered_news_cache=[]
         )
         st.rerun()
 
@@ -796,68 +798,66 @@ with tab2:
         with st.chat_message("assistant", avatar=ROOKIE_IMG):
             loading_placeholder = st.empty()
             loading_placeholder.markdown(f"🔍 **[{cat}]** 뉴스를 수집하고 품질을 확인하는 중...")
-            raw_news = fetch_news(cat, cnt * 3, days_range, region_mode)  # ① 더 많이 가져와서 필터링
+            raw_news = fetch_news(cat, cnt * 3, days_range, region_mode)
             loading_placeholder.empty()
 
             if not raw_news:
                 st.warning("검색 결과가 없습니다. 다른 분야를 선택해 주세요.")
             else:
-                # ── ① 품질 필터링 ─────────────────────────────────
+                # ── ① 품질 필터링 ──────────────────────────────────
                 titles_text = "\n".join([f"{i+1}. {r['title']}" for i, r in enumerate(raw_news)])
                 filter_prompt = f"""아래 뉴스 제목 목록에서 다음 기준으로 상위 {cnt}개를 선택하세요.
-
-기준:
-- 중복 사건/이슈 기사 제거 (같은 사건은 가장 정보량 많은 1개만)
-- 낚시성·광고성 제목 제거
-- 다양한 주제가 포함되도록 선택
-
-뉴스 목록:
-{titles_text}
-
-반드시 JSON 배열로만 응답하세요. 선택한 기사의 번호(1부터 시작)만 포함.
-예시: [1, 3, 5]
+기준: 중복 사건 제거(같은 사건은 1개만), 낚시성·광고성 제거, 다양한 주제 포함
+뉴스 목록:\n{titles_text}
+선택한 기사 번호만 JSON 배열로 응답. 예시: [1, 3, 5]
 JSON:"""
-                selected_indices = list(range(min(cnt, len(raw_news))))  # 기본값: 앞에서 cnt개
+                selected_indices = list(range(min(cnt, len(raw_news))))
                 try:
                     resp = groq_client.chat.completions.create(
                         model=MODEL_NAME,
                         messages=[{"role": "user", "content": filter_prompt}],
                         max_tokens=60, stream=False
                     )
-                    raw = resp.choices[0].message.content.strip()
-                    if "</think>" in raw: raw = raw.split("</think>")[-1].strip()
-                    arr_match = re.search(r'\[.*?\]', raw, re.DOTALL)
+                    raw_r = resp.choices[0].message.content.strip()
+                    if "</think>" in raw_r: raw_r = raw_r.split("</think>")[-1].strip()
+                    arr_match = re.search(r'\[.*?\]', raw_r, re.DOTALL)
                     if arr_match:
                         parsed = json.loads(arr_match.group())
                         selected_indices = [int(x)-1 for x in parsed if 0 < int(x) <= len(raw_news)][:cnt]
                 except Exception:
                     pass
 
-                filtered_news = [raw_news[i] for i in selected_indices if i < len(raw_news)]
+                filtered = [raw_news[i] for i in selected_indices if i < len(raw_news)]
+                # ★ session_state에 저장 → 체크박스 클릭 시 리런해도 유지됨
+                st.session_state.filtered_news_cache = filtered
 
-                # ── ③ 헤드라인 카드 먼저 표시 → 사용자가 선택 ──────
-                st.markdown("**📋 수집된 기사 — 심층 분석할 기사를 선택하세요**")
-                st.caption(f"총 {len(filtered_news)}개 기사 수집 완료 (중복·낚시성 필터 적용)")
+    # ── ③ 헤드라인 카드 + 체크박스 ────────────────────────────────
+    # selected_category 블록과 분리 → 체크박스 변경 시 리런해도 이 블록만 재렌더링
+    if st.session_state.get("filtered_news_cache") and not st.session_state.pending_news:
+        filtered = st.session_state.filtered_news_cache
+        with st.chat_message("assistant", avatar=ROOKIE_IMG):
+            st.markdown("**📋 수집된 기사 — 심층 분석할 기사를 선택하세요**")
+            st.caption(f"총 {len(filtered)}개 기사 수집 완료 (중복·낚시성 필터 적용)")
 
-                selected_flags = []
-                for i, item in enumerate(filtered_news):
-                    col_chk, col_info = st.columns([0.08, 0.92])
-                    chk = col_chk.checkbox("", value=True, key=f"sel_{i}_{item['title'][:10]}")
-                    selected_flags.append(chk)
-                    col_info.markdown(
-                        f"**{item['title']}**  \n"
-                        f"<span style='font-size:0.78rem;color:var(--text3);'>{item['source']} · {item['date']}</span>",
-                        unsafe_allow_html=True
-                    )
+            selected_flags = []
+            for i, item in enumerate(filtered):
+                col_chk, col_info = st.columns([0.08, 0.92])
+                chk = col_chk.checkbox("", value=True, key=f"sel_{i}_{item['title'][:10]}")
+                selected_flags.append(chk)
+                col_info.markdown(
+                    f"**{item['title']}**  \n"
+                    f"<span style='font-size:0.78rem;color:var(--text3);'>{item['source']} · {item['date']}</span>",
+                    unsafe_allow_html=True
+                )
 
-                if st.button("🔍 선택한 기사 심층 분석 시작", type="primary"):
-                    chosen = [item for item, flag in zip(filtered_news, selected_flags) if flag]
-                    if not chosen:
-                        st.warning("최소 1개 이상 선택해 주세요.")
-                    else:
-                        st.session_state.pending_news = chosen
-                        st.session_state.pending_meta = {"cat": cat, "region": region_mode}
-                        st.rerun()
+            if st.button("🔍 선택한 기사 심층 분석 시작", type="primary"):
+                chosen = [item for item, flag in zip(filtered, selected_flags) if flag]
+                if not chosen:
+                    st.warning("최소 1개 이상 선택해 주세요.")
+                else:
+                    st.session_state.pending_news = chosen
+                    st.session_state.filtered_news_cache = []  # 카드 제거
+                    st.rerun()
 
     # ── ③ 선택된 기사 심층 분석 실행 ─────────────────────────────
     if st.session_state.pending_news:
