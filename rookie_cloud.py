@@ -567,7 +567,7 @@ def auth_login(code: str):
         return None
 
 # ── 이용 횟수 제한 (성무진 제외) ─────────────────────────────
-UNLIMITED_USERS = {"성무진"}          # 무제한 허용 이름 목록
+UNLIMITED_USERS = {"ROOKIE-APFG13"}   # 무제한 허용 코드 목록
 DAILY_LIMIT_KR  = 5                   # 한국 뉴스 1회 분석 = 1카운트
 DAILY_LIMIT_OVERSEAS = 3              # 해외/전체 뉴스 1회 분석 = 1카운트
 
@@ -599,12 +599,12 @@ def db_increment_usage(user_code: str, region_mode: str):
     except Exception:
         pass
 
-def check_usage_limit(user_name: str, user_code: str, region_mode: str) -> tuple[bool, str]:
+def check_usage_limit(user_code: str, region_mode: str) -> tuple[bool, str]:
     """
     (허용 여부, 안내 메시지) 반환.
-    무제한 유저면 항상 (True, "").
+    무제한 코드면 항상 (True, "").
     """
-    if user_name in UNLIMITED_USERS:
+    if user_code in UNLIMITED_USERS:
         return True, ""
     usage = db_get_usage(user_code)
     if region_mode == "한국":
@@ -1276,7 +1276,7 @@ with tab3:
         region_mode = st.session_state.pop("selected_region", "한국")
 
         # ── 이용 횟수 사전 체크 ────────────────────────────────────
-        allowed, msg = check_usage_limit(user_name, user_code, region_mode)
+        allowed, msg = check_usage_limit(user_code, region_mode)
         if not allowed:
             with st.chat_message("assistant", avatar=ROOKIE_IMG):
                 st.warning(msg)
