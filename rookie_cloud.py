@@ -258,6 +258,7 @@ def stream_groq(prompt: str) -> str:
             ],
             stream=True,
             max_tokens=2048,
+            extra_body={"thinking": {"type": "disabled"}}  # ← 이 줄 추가
         )
         for chunk in stream:
             delta = chunk.choices[0].delta.content
