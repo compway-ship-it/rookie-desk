@@ -97,29 +97,36 @@ div[data-testid="stChatMessage"] {
     margin-bottom: 20px;
     font-family: 'Noto Sans KR', sans-serif;
 }
+
+/* ── 개발노트 박스 (크고 눈에 띄게) ── */
 .notice-box {
-    background: linear-gradient(135deg, rgba(245,166,35,0.08), rgba(245,166,35,0.03));
-    border: 1px solid rgba(245,166,35,0.25);
-    border-left: 3px solid #f5a623;
-    border-radius: 12px;
-    padding: 16px 18px;
-    font-size: 0.82rem;
-    line-height: 1.9;
-    color: #b8a98a;
-    margin: 12px 0;
+    background: linear-gradient(135deg, rgba(245,166,35,0.12), rgba(245,166,35,0.04));
+    border: 2px solid rgba(245,166,35,0.5);
+    border-left: 5px solid #f5a623;
+    border-radius: 14px;
+    padding: 20px 22px;
+    font-size: 0.88rem;
+    line-height: 2.0;
+    color: #c8bfa8;
+    margin: 14px 0;
+    box-shadow: 0 4px 20px rgba(245,166,35,0.1);
 }
-.notice-box a { color: #f5c842 !important; text-decoration: none; }
+.notice-box a { color: #f5c842 !important; text-decoration: none; font-weight: 600; }
 .notice-box a:hover { text-decoration: underline; }
 .notice-title {
     font-family: 'Noto Serif KR', serif;
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: #f5a623;
-    margin-bottom: 10px;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #f5c842;
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(245,166,35,0.3);
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
+    letter-spacing: -0.3px;
 }
+
 [data-testid="stChatInput"] textarea {
     background: #1c2d4a !important;
     color: #e8dfc8 !important;
@@ -157,11 +164,12 @@ except Exception:
     st.stop()
 
 # ── 세션 초기화 ───────────────────────────────────────────────
-if "messages"     not in st.session_state: st.session_state.messages     = []
-if "news_context" not in st.session_state: st.session_state.news_context = ""
-if "vocab_dict"   not in st.session_state: st.session_state.vocab_dict   = {}
+if "messages"      not in st.session_state: st.session_state.messages      = []
+if "chat_history"  not in st.session_state: st.session_state.chat_history  = []  # 1:1 채팅 전용 히스토리
+if "news_context"  not in st.session_state: st.session_state.news_context  = ""
+if "vocab_dict"    not in st.session_state: st.session_state.vocab_dict    = {}
 
-# ── 키워드 ────────────────────────────────────────────────────
+# ── 키워드 (수급처 대폭 확대) ────────────────────────────────
 CATEGORY_KEYWORDS = {
     "경제/증시": [
         "국내 증시 전망", "금리 환율 동향", "코스피 코스닥 시황",
@@ -221,50 +229,89 @@ CATEGORY_KEYWORDS = {
     ],
 }
 
-# ── 뉴스 검색 ─────────────────────────────────────────────────
-@st.cache_data(ttl=600)
-def fetch_news(category: str, count: int, days: int) -> list:
-    queries, results = CATEGORY_KEYWORDS.get(category, [category]), []
+# ── 뉴스 수급처 확대: 다중 지역 검색 ────────────────────────
+# days_range 변경 시 캐시 무효화를 위해 days를 파라미터로 포함
+@st.cache_data(ttl=300)
+def fetch_news(category: str, count: int, days: int, region_mode: str = "한국") -> list:
+    """
+    region_mode:
+      "한국"  → kr-kr 만 검색
+      "해외"  → us-en, en-ww 검색 (영어권 뉴스)
+      "전체"  → kr-kr + wt-wt 동시 검색
+    """
+    queries = CATEGORY_KEYWORDS.get(category, [category])
+    results = []
+    seen_titles = set()
+    time_limit = f"d{days}"
+
+    region_map = {
+        "한국": ["kr-kr"],
+        "해외": ["us-en", "en-ww"],
+        "전체": ["kr-kr", "wt-wt"],
+    }
+    regions = region_map.get(region_mode, ["kr-kr"])
+
     try:
         with DDGS() as ddgs:
-            for q in queries:
-                for r in ddgs.news(q, region="kr-kr", safesearch="off", timelimit=f"d{days}"):
-                    results.append({
-                        "source":  r.get("source", ""),
-                        "title":   r.get("title", ""),
-                        "link":    r.get("url", ""),
-                        "summary": r.get("body", ""),
-                        "date":    r.get("date", "최근"),
-                        "image":   r.get("image"),
-                    })
-                    if len(results) >= 20: break
-                if len(results) >= 20: break
+            for region in regions:
+                for q in queries:
+                    for r in ddgs.news(
+                        q,
+                        region=region,
+                        safesearch="off",
+                        timelimit=time_limit,
+                        max_results=5
+                    ):
+                        title = r.get("title", "")
+                        if title and title not in seen_titles:
+                            seen_titles.add(title)
+                            results.append({
+                                "source":  r.get("source", ""),
+                                "title":   title,
+                                "link":    r.get("url", ""),
+                                "summary": r.get("body", ""),
+                                "date":    r.get("date", "최근"),
+                                "image":   r.get("image"),
+                            })
+                    if len(results) >= 30:
+                        break
+                if len(results) >= 30:
+                    break
     except Exception as e:
         st.error(f"검색 오류: {e}")
         return []
-    return list({r["title"]: r for r in results}.values())[:count]
 
-# ── Groq 스트리밍 ─────────────────────────────────────────────
-def stream_groq(prompt: str) -> str:
-    def _gen():
-        stream = groq_client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=[
-                {
-                    "role": "system",
-                    "content": """당신은 한국어 전용 AI 비서 루키입니다.
+    return results[:count]
+
+# ── Groq 스트리밍 (<think> 필터링 포함) ──────────────────────
+def stream_groq(prompt: str, history: list = None) -> str:
+    """
+    history: 1:1 채팅용 대화 히스토리 (없으면 단발성 요청)
+    """
+    system_msg = {
+        "role": "system",
+        "content": """당신은 한국어 전용 AI 비서 루키입니다.
 다음 규칙을 반드시 지키세요:
 1. 모든 답변은 100% 한국어로만 작성합니다.
 2. 영어, 중국어, 일본어 등 외국어 단어를 절대 사용하지 않습니다.
-3. 외래어는 한국어로 풀어서 설명합니다.
-4. 이 규칙을 어기는 것은 절대 허용되지 않습니다."""
-                },
-                {"role": "user", "content": prompt}
-            ],
+3. 외래어가 필요하면 한국어로 풀어서 설명합니다.
+4. 전문 용어도 한국어 표현으로 바꿔 씁니다.
+5. 이 규칙을 어기는 것은 절대 허용되지 않습니다."""
+    }
+
+    # 1:1 채팅은 히스토리 포함, 스크랩은 단발성
+    if history:
+        messages = [system_msg] + history + [{"role": "user", "content": prompt}]
+    else:
+        messages = [system_msg, {"role": "user", "content": prompt}]
+
+    def _gen():
+        stream = groq_client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=messages,
             stream=True,
-            max_tokens=2048,
+            max_tokens=3000,
         )
-        # <think>...</think> 블록 실시간 필터링
         buffer = ""
         in_think = False
         for chunk in stream:
@@ -272,18 +319,17 @@ def stream_groq(prompt: str) -> str:
             if not delta:
                 continue
             buffer += delta
-            # think 블록 시작
             if "<think>" in buffer:
                 in_think = True
-            # think 블록 끝
             if "</think>" in buffer and in_think:
                 in_think = False
                 buffer = buffer.split("</think>")[-1]
-            # think 블록 밖의 내용만 출력
             if not in_think and "</think>" in buffer or not in_think and "<think>" not in buffer:
                 yield buffer
                 buffer = ""
+
     return st.write_stream(_gen())
+
 # ── 사이드바 ──────────────────────────────────────────────────
 with st.sidebar:
     try:
@@ -314,24 +360,24 @@ with st.sidebar:
 
     st.markdown("---")
 
+    # ── 개발노트 (크고 눈에 띄게) ──
     st.markdown("""
 <div class='notice-box'>
-<div class='notice-title'>🐶 서비스 안내</div>
-<div style='font-size:0.82rem; line-height:1.8; color:#aaaaaa; padding: 8px 0;'>
+<div class='notice-title'>📋 개발 노트</div>
+<div style='font-size:0.88rem; line-height:2.0; color:#c8bfa8; padding: 4px 0;'>
 ⓐ 현재 이 AI Rookie는 우리가 개발중인 모델의 일부를 떼어낸 것에 불과하며, 완전히 구현되지 않았으므로 오류가 많습니다.<br><br>
 ⓑ 현재 구현되지 않는 기능은 지식저장소, 1:1 채팅 기능의 부자연스러움, 단어저장이 대표적입니다.<br><br>
-ⓒ 현재 사용자께서 보시는 환경은 <b>'신문 및 시사 뉴스 스크랩 기능'</b> 용도로 만들어진 것입니다.<br><br>
+ⓒ 현재 사용자께서 보시는 환경은 <b style='color:#f5c842;'>'신문 및 시사 뉴스 스크랩 기능'</b> 용도로 만들어진 것입니다.<br><br>
 ⓓ 개발 시작일이 3월 초순인 만큼, 실시간으로 업데이트가 되고 있다는 점을 양해 바랍니다.<br><br>
 ⓔ 현재 1:1 대화 및 신문 및 스크랩 생성에 다수의 사용자가 사용 시 생성 제한 및 오류가 발생할 수 있습니다.<br><br>
 ⓕ 현재 클라우드 서버를 이용중이므로 배포에 불완전성이 우려됩니다.<br><br>
 ⓖ PC 환경 사용을 권장합니다.<br><br>
-이 외 오류 및 개선사항이 있다면<br>
-<a href='mailto:compway@yu.ac.kr' style='color:#89b4fa;'>compway@yu.ac.kr</a> 로 메일 전송해 주시면 적극 반영토록 하겠습니다.<br><br>
-— 개발자 —<br>
-성무진, 강연화, 박현수 드림<br>
-<span style='color:#666;'>1차 업데이트: 2026/03/17 오후 10:40</span><br><br>
-<span style='color:#666;'>2차 업데이트(디자인 및 UI수정): 2026/03/17 오후 11:25</span><br><br>
-<span style='color:#666;'>3차 업데이트(모델 답변 개선 및 외국어 출력 버그 수정): 2026/03/18 오전 07:25</span><br><br>
+<span style='color:#f5a623; font-weight:600;'>이 외 오류 및 개선사항이 있다면</span><br>
+<a href='mailto:compway@yu.ac.kr'>compway@yu.ac.kr</a> 로 메일 전송해 주시면 적극 반영토록 하겠습니다.<br><br>
+<span style='color:#f5c842; font-weight:700;'>— 개발자 —</span><br>
+성무진, 강연화, 박현수 드림<br><br>
+<span style='color:#666; font-size:0.78rem;'>1차 업데이트: 2026/03/17 오후 10:40<br>
+2차 업데이트(디자인 및 UI수정): 2026/03/17 오후 11:25</span><br><br>
 오른쪽 위 <b>Dark모드</b> 사용을 권장합니다.
 </div>
 </div>
@@ -339,7 +385,7 @@ with st.sidebar:
 
     st.markdown("---")
     if st.button("🔄 대화 초기화"):
-        st.session_state.update(messages=[], vocab_dict={}, news_context="")
+        st.session_state.update(messages=[], vocab_dict={}, news_context="", chat_history=[])
         st.rerun()
 
 # ── 메인 ──────────────────────────────────────────────────────
@@ -353,14 +399,40 @@ if not st.session_state.messages:
     with st.chat_message("assistant", avatar=ROOKIE_IMG):
         st.markdown(f"안녕하십니까! **최근 {days_range}일**간의 뉴스를 분석해 드리겠습니다. 아래에서 분야를 선택해 주세요 🐾")
         count = st.select_slider("조사할 기사 개수", options=[1, 2, 3, 4, 5], value=3)
+
+        # ── 지역 선택 ──
+        st.markdown("**🌍 뉴스 수급 지역**")
+        region_choice = st.radio(
+            "",
+            options=["🇰🇷 한국 신문", "🌐 해외 신문", "🗺️ 전체 (한국 + 해외)"],
+            horizontal=True,
+            label_visibility="collapsed"
+        )
+        region_map_ui = {
+            "🇰🇷 한국 신문": "한국",
+            "🌐 해외 신문": "해외",
+            "🗺️ 전체 (한국 + 해외)": "전체",
+        }
+        selected_region = region_map_ui[region_choice]
+        st.caption({
+            "한국": "한국 언론사 뉴스만 검색합니다.",
+            "해외": "영어권 해외 언론사 뉴스를 검색합니다.",
+            "전체": "한국 + 해외 뉴스를 모두 검색합니다. (검색 시간이 더 걸릴 수 있어요)",
+        }[selected_region])
+        st.markdown("---")
+
         cats = list(CATEGORY_KEYWORDS.keys())
         for row in [cats[i:i+4] for i in range(0, len(cats), 4)]:
             for col, cat in zip(st.columns(4), row):
                 if col.button(cat):
-                    st.session_state.update(selected_category=cat, selected_count=count)
+                    st.session_state.update(
+                        selected_category=cat,
+                        selected_count=count,
+                        selected_region=selected_region
+                    )
                     st.session_state.messages.append({
                         "role": "user",
-                        "content": f"[{cat}] 최근 {days_range}일 뉴스 {count}개 스크랩해 줘."
+                        "content": f"[{cat}] 최근 {days_range}일 {region_choice} 뉴스 {count}개 스크랩해 줘."
                     })
                     st.rerun()
 
@@ -368,6 +440,7 @@ if not st.session_state.messages:
 if "selected_category" in st.session_state:
     cat = st.session_state.pop("selected_category")
     cnt = st.session_state.pop("selected_count")
+    region_mode = st.session_state.pop("selected_region", "한국")
 
     with st.chat_message("assistant", avatar=ROOKIE_IMG):
 
@@ -392,11 +465,9 @@ if "selected_category" in st.session_state:
 </video>
 """, height=400)
 
-        # 영상 재생 동안 뉴스 수집 후 대기
-        news_data = fetch_news(cat, cnt, days_range)
+        # 영상 재생 동안 뉴스 수집
+        news_data = fetch_news(cat, cnt, days_range, region_mode)
         time.sleep(7)
-
-        # 로딩 영상 제거
         loading_placeholder.empty()
 
         if not news_data:
@@ -415,9 +486,7 @@ if "selected_category" in st.session_state:
 내용: {item['summary']}
 
 [작성 형식]
-
-기본내용: 도입: 이 기사의 전반적인 내용을 15~20문장으로 자연스럽고 풍부하게 서술하세요. 단순 요약이 아니라 기사의 맥락과 의미를 담아 유려하게 작성합니다.
-
+기본 내용: 이 기사의 전반적인 내용을 15~20문장으로 자연스럽고 풍부하게 서술하세요. 단순 요약이 아니라 기사의 맥락과 의미를 담아 유려하게 작성합니다.
 
 핵심 요약: 이 기사의 핵심을 3~5문장으로 간결하게 요약
 
@@ -455,19 +524,34 @@ if "selected_category" in st.session_state:
                 "content": "\n\n".join(parts)
             })
 
-# ── 채팅 기능 ─────────────────────────────────────────────────
-if user_input := st.chat_input("💬 궁금한 점을 물어보세요"):
+# ── 1:1 채팅 (대화 히스토리 유지) ───────────────────────────
+if user_input := st.chat_input("💬 루키에게 무엇이든 물어보세요"):
     st.session_state.messages.append({"role": "user", "content": user_input})
     with st.chat_message("user"):
         st.markdown(user_input)
+
     with st.chat_message("assistant", avatar=ROOKIE_IMG):
         try:
-            res = stream_groq(f"""수석 비서 루키입니다. 문맥을 바탕으로 답변해 주세요.
-[스크랩 문맥]
-{st.session_state.news_context or '아직 스크랩된 내용이 없습니다.'}
-[질문]
-{user_input}
-반드시 한국어로 답변하세요.""")
+            # 스크랩 문맥이 있으면 첫 번째 메시지에 주입
+            if st.session_state.news_context and not st.session_state.chat_history:
+                context_intro = f"[참고 스크랩 내용]\n{st.session_state.news_context}\n\n위 내용을 참고하여 답변해 주세요."
+                st.session_state.chat_history.append({
+                    "role": "user", "content": context_intro
+                })
+                st.session_state.chat_history.append({
+                    "role": "assistant", "content": "네, 스크랩된 내용을 참고하여 답변드리겠습니다."
+                })
+
+            # 히스토리 기반 답변 생성
+            res = stream_groq(user_input, history=st.session_state.chat_history)
+
+            # 히스토리에 이번 대화 추가 (최대 10턴 유지)
+            st.session_state.chat_history.append({"role": "user", "content": user_input})
+            st.session_state.chat_history.append({"role": "assistant", "content": res})
+            if len(st.session_state.chat_history) > 20:
+                st.session_state.chat_history = st.session_state.chat_history[-20:]
+
             st.session_state.messages.append({"role": "assistant", "content": res})
+
         except Exception as e:
             st.error(f"오류: {e}")
