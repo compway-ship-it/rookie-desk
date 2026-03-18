@@ -489,6 +489,20 @@ p, li, label { color: var(--text2) !important; }
 ROOKIE_IMG = "image_2fc863.jpg"
 MODEL_NAME = "qwen/qwen3-32b"
 
+def _img_to_b64(path: str) -> str:
+    """이미지 파일 → base64 data URI 변환 (HTML img src용)"""
+    try:
+        import base64, mimetypes
+        mime = mimetypes.guess_type(path)[0] or "image/jpeg"
+        with open(path, "rb") as f:
+            return f"data:{mime};base64,{base64.b64encode(f.read()).decode()}"
+    except Exception:
+        return ""
+
+_IMG_ROOKIE = _img_to_b64("image_2fc863.jpg")
+_IMG_ROOBIE = _img_to_b64("roobie.png")
+_IMG_ROOSIE = _img_to_b64("roosie.png")
+
 try:
     groq_client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 except Exception:
@@ -903,11 +917,11 @@ with tab1:
 </div>
 """, unsafe_allow_html=True)
 
-    st.markdown("""
+    st.markdown(f"""
 <div class='agent-grid'>
 
   <div class='a-card'>
-    <img src='app/static/roobie.png' style='width:100%; border-radius:12px; margin-bottom:20px; object-fit:cover; max-height:200px;'>
+    <img src='{_IMG_ROOBIE}' style='width:100%; border-radius:12px; margin-bottom:20px; object-fit:cover; max-height:200px;'>
     <div class='a-pill beta'>Beta 3</div>
     <div class='a-name'>루비</div>
     <div class='a-tagline'>수석 투자 비서</div>
@@ -922,7 +936,7 @@ with tab1:
   </div>
 
   <div class='a-card'>
-    <img src='app/static/roosie.png' style='width:100%; border-radius:12px; margin-bottom:20px; object-fit:cover; max-height:200px;'>
+    <img src='{_IMG_ROOSIE}' style='width:100%; border-radius:12px; margin-bottom:20px; object-fit:cover; max-height:200px;'>
     <div class='a-pill beta'>Beta 4</div>
     <div class='a-name'>루시</div>
     <div class='a-tagline'>업무 전담 비서</div>
@@ -937,7 +951,7 @@ with tab1:
   </div>
 
   <div class='a-card'>
-    <img src='app/static/image_2fc863.jpg' style='width:100%; border-radius:12px; margin-bottom:20px; object-fit:cover; max-height:200px;'>
+    <img src='{_IMG_ROOKIE}' style='width:100%; border-radius:12px; margin-bottom:20px; object-fit:cover; max-height:200px;'>
     <div class='a-pill soon'>0차 비공개 베타</div>
     <div class='a-name'>루키</div>
     <div class='a-tagline'>시사 전문 비서</div>
