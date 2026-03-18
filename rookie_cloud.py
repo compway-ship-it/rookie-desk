@@ -409,15 +409,32 @@ if "selected_category" in st.session_state:
             for i, item in enumerate(news_data):
                 st.markdown(f"<div class='report-title'>📌 {i+1}. {item['title']}</div>", unsafe_allow_html=True)
                 if item["image"]: st.image(item["image"], width=700)
-                prompt = f"""수석 비서 루키로서 보고서를 작성하세요."""
+               prompt = f"""
+아래 뉴스 기사를 분석하여 반드시 아래 형식에 맞게 한국어로만 작성하세요.
+
+[기사 정보]
 제목: {item['title']}
 내용: {item['summary']}
-1. [심층 보고]: 발생 배경, 전개 과정, 향후 전망을 유려한 문장으로 상세히 기술하세요.
-2. [루키의 단어 사전]: 어려운 용어 2개를 쉽게 풀이해 주세요.
-   주의사항:
+
+[작성 형식]
+📋 핵심 요약
+- 이 기사의 핵심을 2~3문장으로 간결하게 요약
+
+📖 심층 분석
+- 발생 배경: 이 사건/이슈가 왜 발생했는지
+- 전개 과정: 현재까지 어떻게 진행됐는지
+- 향후 전망: 앞으로 어떻게 될 것으로 예상되는지
+
+📌 루키의 단어 사전
+- [용어1]: 쉬운 설명
+- [용어2]: 쉬운 설명
+
+주의사항:
 - 반드시 한국어로만 작성
 - 중국어, 일본어, 영어 절대 사용 금지
 - 대표님께 조언하는 말투 금지
+"""
+                
 
                 try:
                     analysis = stream_groq(prompt)
