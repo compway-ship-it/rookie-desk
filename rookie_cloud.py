@@ -498,6 +498,8 @@ if "messages"     not in st.session_state: st.session_state.messages     = []
 if "chat_history" not in st.session_state: st.session_state.chat_history = []
 if "news_context" not in st.session_state: st.session_state.news_context = ""
 if "vocab_dict"   not in st.session_state: st.session_state.vocab_dict   = {}
+if "bookmarks"    not in st.session_state: st.session_state.bookmarks    = []   # ② 북마크
+if "pending_news" not in st.session_state: st.session_state.pending_news = []   # ③ 선택형 분석
 
 CATEGORY_KEYWORDS = {
     "경제/증시":   ["국내 증시 전망","금리 환율 동향","코스피 코스닥 시황","주요 기업 실적","한국은행 기준금리","원달러 환율","코스피 급등 급락","기업 IPO 상장","주식 투자 트렌드","채권 금융시장","무역수지 경상수지","소비자물가 인플레이션","기업 인수합병 M&A","벤처 투자 VC","외국인 기관 매매동향"],
@@ -585,8 +587,24 @@ with st.sidebar:
     else:
         st.caption("저장된 단어가 없습니다.")
     st.markdown("---")
+
+    # ── ② 북마크 ──
+    st.markdown("**🔖 북마크**")
+    if st.session_state.bookmarks:
+        for idx, bm in enumerate(list(st.session_state.bookmarks)):
+            with st.expander(f"📌 {bm['title'][:20]}..."):
+                st.caption(f"{bm['source']} · {bm['date']}")
+                st.markdown(f"[원문 보기]({bm['link']})")
+                if st.button("삭제", key=f"bm_del_{idx}"):
+                    st.session_state.bookmarks.pop(idx); st.rerun()
+    else:
+        st.caption("저장된 북마크가 없습니다.")
+    st.markdown("---")
     if st.button("🔄 대화 초기화"):
-        st.session_state.update(messages=[], vocab_dict={}, news_context="", chat_history=[])
+        st.session_state.update(
+            messages=[], vocab_dict={}, news_context="",
+            chat_history=[], bookmarks=[], pending_news=[]
+        )
         st.rerun()
 
 # ── 메인 ──────────────────────────────────────────────────────
@@ -726,7 +744,7 @@ with tab2:
 <b style='color:#c9a84c;'>테스터분들께:</b> 현재 뉴스는 인기·조회수 기반 알고리즘으로 선별됩니다. 이 방식이 좋은지, 혹은 더 다양한 뉴스 노출이 필요한지 피드백 주시면 적극 반영하겠습니다.<br><br>
 오류·개선사항: <a href='mailto:compway@yu.ac.kr'>compway@yu.ac.kr</a><br><br>
 <span style='color:#5c5648; font-size:0.8rem;'>
-1차: 2026/03/17 22:40 · 2차(UI): 2026/03/17 23:25 · 3차(채팅 개선): 2026/03/18 07:23 · 4차(언어·지역 선택): 2026/03/18 11:32 · 5차(1:1·채팅 기능 개선 및 모바일 UI개선): 2026/03/18 14:44
+1차: 2026/03/17 22:40 · 2차(UI): 2026/03/17 23:25 · 3차(채팅 개선): 2026/03/18 07:23 · 4차(언어·지역 선택): 2026/03/18 11:32
 </span>
 </div>
 </div>
@@ -776,23 +794,85 @@ with tab2:
         cnt = st.session_state.pop("selected_count")
         region_mode = st.session_state.pop("selected_region", "한국")
         with st.chat_message("assistant", avatar=ROOKIE_IMG):
-            # ── 텍스트 로딩 표시 (영상 제거) ──
             loading_placeholder = st.empty()
-            loading_placeholder.markdown(
-                f"🔍 **[{cat}]** 분야 최신 뉴스를 수집하고 있습니다..."
-            )
-            news_data = fetch_news(cat, cnt, days_range, region_mode)
+            loading_placeholder.markdown(f"🔍 **[{cat}]** 뉴스를 수집하고 품질을 확인하는 중...")
+            raw_news = fetch_news(cat, cnt * 3, days_range, region_mode)  # ① 더 많이 가져와서 필터링
             loading_placeholder.empty()
 
-            if not news_data:
+            if not raw_news:
                 st.warning("검색 결과가 없습니다. 다른 분야를 선택해 주세요.")
             else:
-                parts = []
-                for i, item in enumerate(news_data):
-                    st.markdown(f"<div class='report-title'>— {i+1}. {item['title']}</div>", unsafe_allow_html=True)
-                    if item["image"]: st.image(item["image"], width=700)
-                    prompt = f"""아래 뉴스 기사를 분석하여 반드시 한국어로만 작성하세요.
-기사가 영어인 경우, 먼저 한국어로 완전히 번역한 뒤 아래 형식으로 분석을 진행하세요.
+                # ── ① 품질 필터링 ─────────────────────────────────
+                titles_text = "\n".join([f"{i+1}. {r['title']}" for i, r in enumerate(raw_news)])
+                filter_prompt = f"""아래 뉴스 제목 목록에서 다음 기준으로 상위 {cnt}개를 선택하세요.
+
+기준:
+- 중복 사건/이슈 기사 제거 (같은 사건은 가장 정보량 많은 1개만)
+- 낚시성·광고성 제목 제거
+- 다양한 주제가 포함되도록 선택
+
+뉴스 목록:
+{titles_text}
+
+반드시 JSON 배열로만 응답하세요. 선택한 기사의 번호(1부터 시작)만 포함.
+예시: [1, 3, 5]
+JSON:"""
+                selected_indices = list(range(min(cnt, len(raw_news))))  # 기본값: 앞에서 cnt개
+                try:
+                    resp = groq_client.chat.completions.create(
+                        model=MODEL_NAME,
+                        messages=[{"role": "user", "content": filter_prompt}],
+                        max_tokens=60, stream=False
+                    )
+                    raw = resp.choices[0].message.content.strip()
+                    if "</think>" in raw: raw = raw.split("</think>")[-1].strip()
+                    arr_match = re.search(r'\[.*?\]', raw, re.DOTALL)
+                    if arr_match:
+                        parsed = json.loads(arr_match.group())
+                        selected_indices = [int(x)-1 for x in parsed if 0 < int(x) <= len(raw_news)][:cnt]
+                except Exception:
+                    pass
+
+                filtered_news = [raw_news[i] for i in selected_indices if i < len(raw_news)]
+
+                # ── ③ 헤드라인 카드 먼저 표시 → 사용자가 선택 ──────
+                st.markdown("**📋 수집된 기사 — 심층 분석할 기사를 선택하세요**")
+                st.caption(f"총 {len(filtered_news)}개 기사 수집 완료 (중복·낚시성 필터 적용)")
+
+                selected_flags = []
+                for i, item in enumerate(filtered_news):
+                    col_chk, col_info = st.columns([0.08, 0.92])
+                    chk = col_chk.checkbox("", value=True, key=f"sel_{i}_{item['title'][:10]}")
+                    selected_flags.append(chk)
+                    col_info.markdown(
+                        f"**{item['title']}**  \n"
+                        f"<span style='font-size:0.78rem;color:var(--text3);'>{item['source']} · {item['date']}</span>",
+                        unsafe_allow_html=True
+                    )
+
+                if st.button("🔍 선택한 기사 심층 분석 시작", type="primary"):
+                    chosen = [item for item, flag in zip(filtered_news, selected_flags) if flag]
+                    if not chosen:
+                        st.warning("최소 1개 이상 선택해 주세요.")
+                    else:
+                        st.session_state.pending_news = chosen
+                        st.session_state.pending_meta = {"cat": cat, "region": region_mode}
+                        st.rerun()
+
+    # ── ③ 선택된 기사 심층 분석 실행 ─────────────────────────────
+    if st.session_state.pending_news:
+        news_to_analyze = st.session_state.pending_news
+        st.session_state.pending_news = []
+        meta = st.session_state.pop("pending_meta", {})
+
+        with st.chat_message("assistant", avatar=ROOKIE_IMG):
+            parts = []
+            for i, item in enumerate(news_to_analyze):
+                st.markdown(f"<div class='report-title'>— {i+1}. {item['title']}</div>", unsafe_allow_html=True)
+                if item["image"]: st.image(item["image"], use_container_width=True)
+
+                prompt = f"""아래 뉴스 기사를 분석하여 반드시 한국어로만 작성하세요.
+기사가 영어인 경우, 먼저 한국어로 완전히 번역한 뒤 분석을 진행하세요.
 
 [기사 정보]
 제목: {item['title']}
@@ -809,20 +889,37 @@ with tab2:
 - 용어1: 쉬운 설명
 - 용어2: 쉬운 설명
 주의사항: 반드시 한국어로만 작성, 외국어 절대 사용 금지, 대표님께 조언 금지"""
-                    try:
-                        analysis = stream_groq(prompt)
-                    except Exception as e:
-                        analysis = f"오류: {e}"; st.error(analysis)
-                    c1, c2, c3 = st.columns([2, 2, 1])
-                    w = c1.text_input("단어", key=f"w_{i}")
-                    d = c2.text_input("정의", key=f"d_{i}")
-                    if c3.button("저장", key=f"b_{i}") and w:
-                        st.session_state.vocab_dict[w] = d; st.toast(f"'{w}' 저장 완료!")
-                    st.markdown(f"[기사 원문]({item['link']}) · {item['source']} · {item['date']}")
-                    st.markdown("---")
-                    st.session_state.news_context += f"\n{analysis}"
-                    parts.append(f"**{i+1}. {item['title']}**\n{analysis}")
-                st.session_state.messages.append({"role": "assistant", "content": "\n\n".join(parts)})
+
+                try:
+                    analysis = stream_groq(prompt)
+                except Exception as e:
+                    analysis = f"오류: {e}"; st.error(analysis)
+
+                # ── ② 북마크 버튼 + 단어 저장 ──
+                act1, act2, act3, act4 = st.columns([2, 2, 1, 1])
+                w = act1.text_input("단어", key=f"w_{i}")
+                d = act2.text_input("정의", key=f"d_{i}")
+                if act3.button("저장", key=f"b_{i}") and w:
+                    st.session_state.vocab_dict[w] = d
+                    st.toast(f"'{w}' 저장 완료!")
+                if act4.button("🔖", key=f"bm_{i}", help="북마크에 저장"):
+                    already = any(bm["link"] == item["link"] for bm in st.session_state.bookmarks)
+                    if not already:
+                        st.session_state.bookmarks.append({
+                            "title": item["title"], "link": item["link"],
+                            "source": item["source"], "date": item["date"],
+                            "summary": analysis[:200]
+                        })
+                        st.toast(f"🔖 북마크 저장!")
+                    else:
+                        st.toast("이미 북마크된 기사입니다.")
+
+                st.markdown(f"[기사 원문]({item['link']}) · {item['source']} · {item['date']}")
+                st.markdown("---")
+                st.session_state.news_context += f"\n{analysis}"
+                parts.append(f"**{i+1}. {item['title']}**\n{analysis}")
+
+            st.session_state.messages.append({"role": "assistant", "content": "\n\n".join(parts)})
 
 # ── 스마트 채팅: 의도 분류 + 파라미터 추출 파이프라인 ─────────
 def classify_intent(user_input: str) -> dict:
@@ -1117,13 +1214,24 @@ def run_news_from_chat(params: dict):
         except Exception as e:
             analysis = f"오류: {e}"; st.error(analysis)
 
-        # 단어 저장 UI (채팅 내에서도 동일하게)
+        # 단어 저장 UI + ② 북마크
         key_suffix = f"chat_{i}_{hash(item['title'])}"
-        c1, c2, c3 = st.columns([2, 2, 1])
+        c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
         w = c1.text_input("단어", key=f"cw_{key_suffix}")
         d = c2.text_input("정의", key=f"cd_{key_suffix}")
         if c3.button("저장", key=f"cb_{key_suffix}") and w:
             st.session_state.vocab_dict[w] = d; st.toast(f"'{w}' 저장 완료!")
+        if c4.button("🔖", key=f"cbm_{key_suffix}", help="북마크 저장"):
+            already = any(bm["link"] == item["link"] for bm in st.session_state.bookmarks)
+            if not already:
+                st.session_state.bookmarks.append({
+                    "title": item["title"], "link": item["link"],
+                    "source": item["source"], "date": item["date"],
+                    "summary": analysis[:200]
+                })
+                st.toast("🔖 북마크 저장!")
+            else:
+                st.toast("이미 북마크된 기사입니다.")
 
         st.markdown(f"[기사 원문]({item['link']}) · {item['source']} · {item['date']}")
         st.markdown("---")
