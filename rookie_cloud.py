@@ -97,8 +97,6 @@ div[data-testid="stChatMessage"] {
     margin-bottom: 20px;
     font-family: 'Noto Sans KR', sans-serif;
 }
-
-/* ── 개발노트 박스 (크고 눈에 띄게) ── */
 .notice-box {
     background: linear-gradient(135deg, rgba(245,166,35,0.12), rgba(245,166,35,0.04));
     border: 2px solid rgba(245,166,35,0.5);
@@ -126,7 +124,6 @@ div[data-testid="stChatMessage"] {
     gap: 8px;
     letter-spacing: -0.3px;
 }
-
 [data-testid="stChatInput"] textarea {
     background: #1c2d4a !important;
     color: #e8dfc8 !important;
@@ -164,96 +161,62 @@ except Exception:
     st.stop()
 
 # ── 세션 초기화 ───────────────────────────────────────────────
-if "messages"      not in st.session_state: st.session_state.messages      = []
-if "chat_history"  not in st.session_state: st.session_state.chat_history  = []  # 1:1 채팅 전용 히스토리
-if "news_context"  not in st.session_state: st.session_state.news_context  = ""
-if "vocab_dict"    not in st.session_state: st.session_state.vocab_dict    = {}
+if "messages"     not in st.session_state: st.session_state.messages     = []
+if "chat_history" not in st.session_state: st.session_state.chat_history = []
+if "news_context" not in st.session_state: st.session_state.news_context = ""
+if "vocab_dict"   not in st.session_state: st.session_state.vocab_dict   = {}
 
-# ── 키워드 (수급처 대폭 확대) ────────────────────────────────
+# ── 한국어 키워드 ─────────────────────────────────────────────
 CATEGORY_KEYWORDS = {
-    "경제/증시": [
-        "국내 증시 전망", "금리 환율 동향", "코스피 코스닥 시황",
-        "주요 기업 실적", "한국은행 기준금리", "원달러 환율",
-        "코스피 급등 급락", "기업 IPO 상장", "주식 투자 트렌드",
-        "채권 금융시장", "무역수지 경상수지", "소비자물가 인플레이션",
-        "기업 인수합병 M&A", "벤처 투자 VC", "외국인 기관 매매동향"
-    ],
-    "AI/미래기술": [
-        "AI 기술 트렌드", "반도체 산업 전망", "LLM 인공지능 혁신",
-        "엔비디아 빅테크 소식", "AI 스타트업", "챗GPT 클로드 최신",
-        "자율주행 로봇 기술", "양자컴퓨터 기술", "AI 반도체 칩",
-        "메타버스 XR 기술", "사이버보안 해킹", "핀테크 블록체인",
-        "드론 UAM 기술", "바이오 AI 헬스케어", "스마트팩토리 자동화"
-    ],
-    "정치/외교": [
-        "국회 법안 통과", "정부 정책 발표", "대통령실 동향",
-        "한미 외교 관계", "여야 정치 쟁점", "선거 여론조사",
-        "한중 한일 외교", "유엔 국제기구 동향", "국방 안보 정책",
-        "북한 도발 동향", "장관 인사 내각", "검찰 사법 이슈",
-        "지방자치 행정", "헌법재판소 판결", "외교부 조약 협정"
-    ],
-    "산업/부동산": [
-        "부동산 시장 전망", "아파트 매매 시황", "건설 산업 동향",
-        "공급망 이슈", "전세 월세 시장", "재건축 재개발",
-        "제조업 수출 동향", "중소기업 스타트업 소식", "자동차 산업",
-        "조선 철강 산업", "유통 물류 이커머스", "식품 농업 수산",
-        "에너지 석유 가스", "호텔 관광 항공 산업", "바이오 제약 산업"
-    ],
-    "글로벌 뉴스": [
-        "국제 정세", "미국 경제 동향", "글로벌 시장 이슈",
-        "해외 주요 뉴스", "중국 경제 무역", "유럽 경제 위기",
-        "중동 전쟁 분쟁", "G7 G20 정상회담", "러시아 우크라이나",
-        "아세안 동남아 경제", "일본 엔화 경제", "인도 신흥국 성장",
-        "세계은행 IMF 전망", "글로벌 공급망 재편", "미중 무역 갈등"
-    ],
-    "과학/환경": [
-        "최신 과학 기술", "기후 변화 정책", "에너지 산업",
-        "우주 항공 뉴스", "탄소중립 환경 규제", "신재생에너지 태양광",
-        "노벨상 과학 연구", "바이오 헬스케어 기술", "핵융합 원자력",
-        "해양 수질 오염", "생물 다양성 멸종", "전기차 배터리",
-        "수소에너지 연료전지", "나사 스페이스X 우주탐사", "기상 이상기후"
-    ],
-    "사회/이슈": [
-        "사회적 주요 현안", "오늘의 이슈", "인구 및 통계 조사",
-        "교육 정책 입시", "저출생 고령화", "범죄 사건 사고",
-        "노동 임금 근로", "복지 의료 정책", "젠더 다양성 이슈",
-        "청년 취업 실업", "주거 빈곤 격차", "언론 미디어 이슈",
-        "종교 갈등 사회", "이민 다문화 정책", "재난 안전 사고"
-    ],
-    "문화/라이프": [
-        "문화 트렌드", "라이프스타일", "소비 동향",
-        "예술 전시 소식", "한류 K팝 드라마", "스포츠 경기 결과",
-        "음식 여행 관광", "패션 뷰티 트렌드", "영화 OTT 콘텐츠",
-        "게임 e스포츠", "웹툰 출판 문학", "건강 운동 피트니스",
-        "반려동물 펫 시장", "명품 럭셔리 소비", "힐링 웰니스 트렌드"
-    ],
+    "경제/증시":   ["국내 증시 전망", "금리 환율 동향", "코스피 코스닥 시황", "주요 기업 실적", "한국은행 기준금리", "원달러 환율", "코스피 급등 급락", "기업 IPO 상장", "주식 투자 트렌드", "채권 금융시장", "무역수지 경상수지", "소비자물가 인플레이션", "기업 인수합병 M&A", "벤처 투자 VC", "외국인 기관 매매동향"],
+    "AI/미래기술": ["AI 기술 트렌드", "반도체 산업 전망", "LLM 인공지능 혁신", "엔비디아 빅테크 소식", "AI 스타트업", "챗GPT 클로드 최신", "자율주행 로봇 기술", "양자컴퓨터 기술", "AI 반도체 칩", "메타버스 XR 기술", "사이버보안 해킹", "핀테크 블록체인", "드론 UAM 기술", "바이오 AI 헬스케어", "스마트팩토리 자동화"],
+    "정치/외교":   ["국회 법안 통과", "정부 정책 발표", "대통령실 동향", "한미 외교 관계", "여야 정치 쟁점", "선거 여론조사", "한중 한일 외교", "유엔 국제기구 동향", "국방 안보 정책", "북한 도발 동향", "장관 인사 내각", "검찰 사법 이슈", "지방자치 행정", "헌법재판소 판결", "외교부 조약 협정"],
+    "산업/부동산": ["부동산 시장 전망", "아파트 매매 시황", "건설 산업 동향", "공급망 이슈", "전세 월세 시장", "재건축 재개발", "제조업 수출 동향", "중소기업 스타트업 소식", "자동차 산업", "조선 철강 산업", "유통 물류 이커머스", "식품 농업 수산", "에너지 석유 가스", "호텔 관광 항공 산업", "바이오 제약 산업"],
+    "글로벌 뉴스": ["국제 정세", "미국 경제 동향", "글로벌 시장 이슈", "해외 주요 뉴스", "중국 경제 무역", "유럽 경제 위기", "중동 전쟁 분쟁", "G7 G20 정상회담", "러시아 우크라이나", "아세안 동남아 경제", "일본 엔화 경제", "인도 신흥국 성장", "세계은행 IMF 전망", "글로벌 공급망 재편", "미중 무역 갈등"],
+    "과학/환경":   ["최신 과학 기술", "기후 변화 정책", "에너지 산업", "우주 항공 뉴스", "탄소중립 환경 규제", "신재생에너지 태양광", "노벨상 과학 연구", "바이오 헬스케어 기술", "핵융합 원자력", "해양 수질 오염", "생물 다양성 멸종", "전기차 배터리", "수소에너지 연료전지", "나사 스페이스X 우주탐사", "기상 이상기후"],
+    "사회/이슈":   ["사회적 주요 현안", "오늘의 이슈", "인구 및 통계 조사", "교육 정책 입시", "저출생 고령화", "범죄 사건 사고", "노동 임금 근로", "복지 의료 정책", "젠더 다양성 이슈", "청년 취업 실업", "주거 빈곤 격차", "언론 미디어 이슈", "종교 갈등 사회", "이민 다문화 정책", "재난 안전 사고"],
+    "문화/라이프": ["문화 트렌드", "라이프스타일", "소비 동향", "예술 전시 소식", "한류 K팝 드라마", "스포츠 경기 결과", "음식 여행 관광", "패션 뷰티 트렌드", "영화 OTT 콘텐츠", "게임 e스포츠", "웹툰 출판 문학", "건강 운동 피트니스", "반려동물 펫 시장", "명품 럭셔리 소비", "힐링 웰니스 트렌드"],
 }
 
-# ── 뉴스 수급처 확대: 다중 지역 검색 ────────────────────────
-# days_range 변경 시 캐시 무효화를 위해 days를 파라미터로 포함
+# ── 영어 키워드 (해외 뉴스 전용) ─────────────────────────────
+CATEGORY_KEYWORDS_EN = {
+    "경제/증시":   ["stock market outlook", "interest rate currency trend", "US market stocks", "corporate earnings results", "Fed rate decision", "inflation CPI data", "S&P500 nasdaq dow", "IPO listing stock", "investment trend 2026", "trade balance deficit", "M&A acquisition deal", "venture capital funding", "foreign investor flows", "bond market yield", "GDP economic growth"],
+    "AI/미래기술": ["AI technology trend 2026", "semiconductor industry outlook", "LLM large language model", "Nvidia big tech news", "AI startup funding", "ChatGPT Claude Gemini latest", "autonomous vehicle robotics news", "quantum computing breakthrough", "AI chip hardware", "metaverse XR technology", "cybersecurity hacking news", "fintech blockchain crypto", "drone UAM aviation", "biotech AI healthcare", "smart factory automation"],
+    "정치/외교":   ["US legislation bill congress", "government policy announcement", "White House news", "US Korea Japan diplomacy", "political conflict election", "election poll survey results", "US China Japan relations", "UN international organization", "defense security policy", "North Korea provocation news", "cabinet reshuffle minister", "justice court ruling", "local government policy", "supreme court decision", "international treaty agreement"],
+    "산업/부동산": ["real estate market outlook", "housing market trend 2026", "construction industry news", "supply chain disruption", "rental housing market", "urban redevelopment renewal", "manufacturing export trend", "SME startup news funding", "automobile EV industry", "steel shipbuilding industry", "logistics e-commerce news", "food agriculture commodity", "energy oil gas price", "hotel tourism aviation industry", "biotech pharma industry news"],
+    "글로벌 뉴스": ["international affairs news", "US economy latest news", "global market issue today", "world news breaking", "China economy trade war", "Europe economic crisis", "Middle East conflict war", "G7 G20 summit meeting", "Russia Ukraine war update", "ASEAN Southeast Asia economy", "Japan yen economy news", "India emerging market growth", "World Bank IMF forecast", "global supply chain reshaping", "US China trade tariff"],
+    "과학/환경":   ["science technology breakthrough", "climate change policy COP", "energy industry transition", "space aerospace NASA news", "carbon neutral green deal", "renewable solar wind energy", "Nobel Prize science discovery", "biotech healthcare innovation", "nuclear fusion energy", "ocean pollution environment", "biodiversity species extinction", "electric vehicle battery EV", "hydrogen fuel cell energy", "SpaceX space exploration", "extreme weather climate disaster"],
+    "사회/이슈":   ["social issue news today", "major issue controversy", "population demographics statistics", "education policy reform", "birth rate aging population", "crime incident breaking news", "labor wage workers strike", "welfare healthcare policy", "gender diversity equality", "youth employment jobs", "housing poverty inequality", "media press freedom", "religion conflict society", "immigration multicultural policy", "natural disaster safety"],
+    "문화/라이프": ["culture lifestyle trend", "consumer trend spending", "art exhibition museum", "K-pop Korean wave hallyu", "sports game result score", "food travel tourism news", "fashion beauty trend", "movie OTT streaming content", "gaming esports news", "book publishing literature", "health fitness wellness", "pet market animal", "luxury brand consumption", "wellness mental health trend", "entertainment celebrity news"],
+}
+
+# ── 뉴스 검색 ─────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def fetch_news(category: str, count: int, days: int, region_mode: str = "한국") -> list:
     """
     region_mode:
-      "한국"  → kr-kr 만 검색
-      "해외"  → us-en, en-ww 검색 (영어권 뉴스)
-      "전체"  → kr-kr + wt-wt 동시 검색
+      "한국" → kr-kr + 한국어 쿼리  (진짜 한국 뉴스)
+      "해외" → us-en + en-ww + 영어 쿼리  (진짜 해외 뉴스)
+      "전체" → 한국어(kr-kr) + 영어(us-en) 동시 검색
     """
-    queries = CATEGORY_KEYWORDS.get(category, [category])
-    results = []
-    seen_titles = set()
     time_limit = f"d{days}"
 
-    region_map = {
-        "한국": ["kr-kr"],
-        "해외": ["us-en", "en-ww"],
-        "전체": ["kr-kr", "wt-wt"],
-    }
-    regions = region_map.get(region_mode, ["kr-kr"])
+    if region_mode == "한국":
+        search_plan = [("kr-kr", CATEGORY_KEYWORDS.get(category, [category]))]
+    elif region_mode == "해외":
+        en_q = CATEGORY_KEYWORDS_EN.get(category, [category])
+        search_plan = [("us-en", en_q), ("en-ww", en_q)]
+    else:  # 전체
+        kr_q = CATEGORY_KEYWORDS.get(category, [category])
+        en_q = CATEGORY_KEYWORDS_EN.get(category, [category])
+        search_plan = [("kr-kr", kr_q), ("us-en", en_q)]
+
+    results = []
+    seen_titles = set()
 
     try:
         with DDGS() as ddgs:
-            for region in regions:
+            for region, queries in search_plan:
                 for q in queries:
                     for r in ddgs.news(
                         q,
@@ -285,9 +248,6 @@ def fetch_news(category: str, count: int, days: int, region_mode: str = "한국"
 
 # ── Groq 스트리밍 (<think> 필터링 포함) ──────────────────────
 def stream_groq(prompt: str, history: list = None) -> str:
-    """
-    history: 1:1 채팅용 대화 히스토리 (없으면 단발성 요청)
-    """
     system_msg = {
         "role": "system",
         "content": """당신은 한국어 전용 AI 비서 루키입니다.
@@ -299,7 +259,6 @@ def stream_groq(prompt: str, history: list = None) -> str:
 5. 이 규칙을 어기는 것은 절대 허용되지 않습니다."""
     }
 
-    # 1:1 채팅은 히스토리 포함, 스크랩은 단발성
     if history:
         messages = [system_msg] + history + [{"role": "user", "content": prompt}]
     else:
@@ -391,13 +350,12 @@ if not st.session_state.messages:
 <span style='color:#f5c842; font-weight:700;'>— 개발자 —</span><br>
 성무진, 강연화, 박현수 드림<br><br>
 <span style='color:#666; font-size:0.82rem;'>1차 업데이트: 2026/03/17 오후 10:40<br>
-2차 수정(디자인 및 UI수정): 2026/03/17 오후 11:25</span><br><br>
-3차 수정(모델 답변 및 채팅 개선): 2026/03/17 오전 07:23</span><br><br>
-3차 수정(모델 외국어 출력 버그 및 해외,한국 선택 기능 추가): 2026/03/17 오전 11:32</span><br><br>
-<b style='color:#f5c842;'>'테스터 분들께 : 현재 뉴스 및 시사는 가장 인기 및 조회수가 높은 것을 위주로 선별하여 출력되게 되어 있습니다.'</b><br><br>
-<b style='color:#f5c842;'>'이를 지금과 같은 알고리즘으로 구현이 나을지, 아니면 이 알고리즘을 제외하고 다양한 뉴스를 보여줄 지를 고민 중에 있습니다.'</b><br><br>
-<b style='color:#f5c842;'>'이에 대해서 피드백을 얻고자 하며, 상기 기재된 메일로 피드백 남겨 주시면 감사드리겠습니다.'</b>
-
+2차 수정(디자인 및 UI수정): 2026/03/17 오후 11:25<br>
+3차 수정(모델 답변 및 채팅 개선): 2026/03/17 오전 07:23<br>
+4차 수정(모델 외국어 출력 버그 및 해외/한국 선택 기능 추가): 2026/03/18 오전 11:32</span><br><br>
+<b style='color:#f5c842;'>테스터 분들께: 현재 뉴스 및 시사는 가장 인기 및 조회수가 높은 것을 위주로 선별하여 출력되게 되어 있습니다.</b><br><br>
+<b style='color:#f5c842;'>이를 지금과 같은 알고리즘으로 구현이 나을지, 아니면 이 알고리즘을 제외하고 다양한 뉴스를 보여줄 지를 고민 중에 있습니다.</b><br><br>
+<b style='color:#f5c842;'>이에 대해서 피드백을 얻고자 하며, 상기 기재된 메일로 피드백 남겨 주시면 감사드리겠습니다.</b>
 </div>
 </div>
 """, unsafe_allow_html=True)
@@ -415,13 +373,13 @@ if not st.session_state.messages:
         )
         region_map_ui = {
             "🇰🇷 한국 신문": "한국",
-            "🌐 해외 신문": "해외",
+            "🌐 해외 신문":   "해외",
             "🗺️ 전체 (한국 + 해외)": "전체",
         }
         selected_region = region_map_ui[region_choice]
         st.caption({
             "한국": "한국 언론사 뉴스만 검색합니다.",
-            "해외": "영어권 해외 언론사 뉴스를 검색합니다.",
+            "해외": "영어권 해외 언론사 뉴스를 검색합니다. (BBC, Reuters, Bloomberg 등)",
             "전체": "한국 + 해외 뉴스를 모두 검색합니다. (검색 시간이 더 걸릴 수 있어요)",
         }[selected_region])
         st.markdown("---")
@@ -443,13 +401,12 @@ if not st.session_state.messages:
 
 # ── 스크랩 실행 ───────────────────────────────────────────────
 if "selected_category" in st.session_state:
-    cat = st.session_state.pop("selected_category")
-    cnt = st.session_state.pop("selected_count")
+    cat         = st.session_state.pop("selected_category")
+    cnt         = st.session_state.pop("selected_count")
     region_mode = st.session_state.pop("selected_region", "한국")
 
     with st.chat_message("assistant", avatar=ROOKIE_IMG):
 
-        # 로딩 영상 표시
         loading_placeholder = st.empty()
         with loading_placeholder.container():
             st.markdown("""
@@ -470,7 +427,6 @@ if "selected_category" in st.session_state:
 </video>
 """, height=400)
 
-        # 영상 재생 동안 뉴스 수집
         news_data = fetch_news(cat, cnt, days_range, region_mode)
         time.sleep(7)
         loading_placeholder.empty()
@@ -504,8 +460,13 @@ if "selected_category" in st.session_state:
 - 용어1: 쉬운 설명
 - 용어2: 쉬운 설명
 
-주의사항: 반드시 한국어로만 작성, 중국어 일본어 영어 절대 사용 금지, 대표님께 조언 금지"""
+[번역 지시]
+아래 기사가 영어를 포함한 외국어인 경우, 먼저 한국어로 완전히 번역한 뒤 분석을 진행하세요.
+번역된 제목을 맨 위에 표시하세요.
 
+주의사항: 출력은 반드시 한국어로만 작성, 중국어 일본어 영어 절대 사용 금지, 대표님께 조언 금지"""
+
+                
                 try:
                     analysis = stream_groq(prompt)
                 except Exception as e:
@@ -537,20 +498,13 @@ if user_input := st.chat_input("💬 루키에게 무엇이든 물어보세요")
 
     with st.chat_message("assistant", avatar=ROOKIE_IMG):
         try:
-            # 스크랩 문맥이 있으면 첫 번째 메시지에 주입
             if st.session_state.news_context and not st.session_state.chat_history:
                 context_intro = f"[참고 스크랩 내용]\n{st.session_state.news_context}\n\n위 내용을 참고하여 답변해 주세요."
-                st.session_state.chat_history.append({
-                    "role": "user", "content": context_intro
-                })
-                st.session_state.chat_history.append({
-                    "role": "assistant", "content": "네, 스크랩된 내용을 참고하여 답변드리겠습니다."
-                })
+                st.session_state.chat_history.append({"role": "user", "content": context_intro})
+                st.session_state.chat_history.append({"role": "assistant", "content": "네, 스크랩된 내용을 참고하여 답변드리겠습니다."})
 
-            # 히스토리 기반 답변 생성
             res = stream_groq(user_input, history=st.session_state.chat_history)
 
-            # 히스토리에 이번 대화 추가 (최대 10턴 유지)
             st.session_state.chat_history.append({"role": "user", "content": user_input})
             st.session_state.chat_history.append({"role": "assistant", "content": res})
             if len(st.session_state.chat_history) > 20:
