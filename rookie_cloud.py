@@ -409,7 +409,7 @@ if "selected_category" in st.session_state:
             for i, item in enumerate(news_data):
                 st.markdown(f"<div class='report-title'>📌 {i+1}. {item['title']}</div>", unsafe_allow_html=True)
                 if item["image"]: st.image(item["image"], width=700)
-                prompt = f"""수석 비서 루키로서 보고서를 작성하세요.
+                prompt = f"""수석 비서 루키로서 보고서를 작성하세요."""
 제목: {item['title']}
 내용: {item['summary']}
 1. [심층 보고]: 발생 배경, 전개 과정, 향후 전망을 유려한 문장으로 상세히 기술하세요.
