@@ -252,20 +252,38 @@ def stream_groq(prompt: str) -> str:
             messages=[
                 {
                     "role": "system",
-                    "content": "당신은 한국어 AI 비서 루키입니다. 반드시 한국어로만 답변하세요. 중국어, 일본어, 영어 등 다른 언어는 절대 사용하지 마세요."
+                    "content": """당신은 한국어 전용 AI 비서 루키입니다.
+다음 규칙을 반드시 지키세요:
+1. 모든 답변은 100% 한국어로만 작성합니다.
+2. 영어, 중국어, 일본어 등 외국어 단어를 절대 사용하지 않습니다.
+3. 외래어는 한국어로 풀어서 설명합니다.
+4. 이 규칙을 어기는 것은 절대 허용되지 않습니다."""
                 },
                 {"role": "user", "content": prompt}
             ],
             stream=True,
             max_tokens=2048,
-            extra_body={"thinking": {"type": "disabled"}}  # ← 이 줄 추가
         )
+        # <think>...</think> 블록 실시간 필터링
+        buffer = ""
+        in_think = False
         for chunk in stream:
             delta = chunk.choices[0].delta.content
-            if delta:
-                yield delta
+            if not delta:
+                continue
+            buffer += delta
+            # think 블록 시작
+            if "<think>" in buffer:
+                in_think = True
+            # think 블록 끝
+            if "</think>" in buffer and in_think:
+                in_think = False
+                buffer = buffer.split("</think>")[-1]
+            # think 블록 밖의 내용만 출력
+            if not in_think and "</think>" in buffer or not in_think and "<think>" not in buffer:
+                yield buffer
+                buffer = ""
     return st.write_stream(_gen())
-
 # ── 사이드바 ──────────────────────────────────────────────────
 with st.sidebar:
     try:
