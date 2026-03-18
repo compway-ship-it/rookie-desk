@@ -745,17 +745,17 @@ if st.session_state.current_user is None:
 
         # ── 회원가입 탭 ──
         with tab_signup:
-            st.caption("추천인 코드 확인 후 이름을 입력하면 고유 코드가 발급됩니다.")
+            st.caption("개발자 코드 확인 후 이름을 입력하면 고유 코드가 발급됩니다.")
 
             referral = st.text_input(
-                "누구에게 추천을 받으셨나요?",
-                placeholder="추천인 코드 입력",
+                "어떤 개발자에게 코드를 받으셨나요?",
+                placeholder="개발자 코드 입력",
                 key="referral_input"
             ).strip()
 
             referral_ok = referral == REFERRAL_CODE
             if referral and not referral_ok:
-                st.error("올바르지 않은 추천인 코드입니다.")
+                st.error("올바르지 않은 개발자 코드입니다.")
             if referral_ok:
                 st.success("추천인 확인 완료! 이름을 입력해 주세요.")
 
