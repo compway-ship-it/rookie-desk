@@ -1230,6 +1230,29 @@ with tab3:
     if st.session_state.show_category_ui:
         with st.chat_message("assistant", avatar=ROOKIE_IMG):
             st.markdown(f"안녕하십니까. 최근 **{days_range}일**간의 뉴스를 분석해 드립니다.")
+
+            # ── 잔여 횟수 안내 (무제한 유저 제외) ──────────────────
+            if user_code not in UNLIMITED_USERS:
+                usage   = db_get_usage(user_code)
+                kr_left = max(0, DAILY_LIMIT_KR - usage.get("kr", 0))
+                ov_left = max(0, DAILY_LIMIT_OVERSEAS - usage.get("overseas", 0))
+                if kr_left == 0 and ov_left == 0:
+                    st.markdown(f"""
+<div style='background:rgba(255,100,100,0.07); border:1px solid rgba(255,100,100,0.2);
+            border-left:3px solid #ff6464; border-radius:10px; padding:14px 18px;
+            font-size:0.88rem; color:#ff9a9a; line-height:1.9; margin-bottom:8px;'>
+  😴 &nbsp;오늘 스크랩 횟수를 모두 사용했어요.<br>
+  <span style='color:#5c5648; font-size:0.82rem;'>내일 자정(KST)에 횟수가 초기화됩니다.</span>
+</div>""", unsafe_allow_html=True)
+                else:
+                    st.markdown(f"""
+<div style='background:rgba(201,168,76,0.07); border:1px solid rgba(201,168,76,0.18);
+            border-left:3px solid var(--gold); border-radius:10px; padding:14px 18px;
+            font-size:0.88rem; color:#c9a84c; line-height:2.0; margin-bottom:8px;'>
+  🐾 &nbsp;오늘 만들 수 있는 스크랩이 &nbsp;<b style='color:#e8c76a; font-size:1rem;'>한국 {kr_left}개 · 해외 {ov_left}개</b>&nbsp; 남았어요.<br>
+  <span style='color:#5c5648; font-size:0.8rem;'>한국 뉴스 최대 {DAILY_LIMIT_KR}회 · 해외/전체 최대 {DAILY_LIMIT_OVERSEAS}회 / 매일 자정 초기화</span>
+</div>""", unsafe_allow_html=True)
+
             st.markdown("**🌍 뉴스 수급 지역**")
             region_choice = st.radio("", options=["🇰🇷 한국 신문", "🌐 해외 신문", "🗺️ 전체 (한국 + 해외)"], horizontal=True, label_visibility="collapsed")
             region_map_ui = {"🇰🇷 한국 신문": "한국", "🌐 해외 신문": "해외", "🗺️ 전체 (한국 + 해외)": "전체"}
